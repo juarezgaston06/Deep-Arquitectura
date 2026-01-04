@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+    <defs>
+        <style>
+            .logo-text { font-family: 'Outfit', sans-serif; }
+            .deep { font-weight: 700; font-size: 38px; letter-spacing: 5px; fill: #1A1A1A; }
+            .arq { font-weight: 300; font-size: 16px; letter-spacing: 4px; fill: #8D6E63; text-transform: uppercase; }
+        </style>
+        <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#4A3728" />
+            <stop offset="100%" style="stop-color:#8D6E63" />
+        </linearGradient>
+    </defs>
+    
+    <!-- Icon Container -->
+    <g transform="translate(10, 15)">
+        <!-- Architectural Frame (D Shape) -->
+        <path d="M70 15 L25 15 L25 85 L70 85 C90 85 105 70 105 50 C105 30 90 15 70 15 Z" 
+              fill="none" 
+              stroke="#4A3728" 
+              stroke-width="3.5" />
+        
+        <!-- Floor Plan Grid Line -->
+        <line x1="25" y1="50" x2="105" y2="50" stroke="#8D6E63" stroke-width="1.5" stroke-dasharray="6 3" />
+        <line x1="50" y1="15" x2="50" y2="85" stroke="#4A3728" stroke-opacity="0.15" stroke-width="1" />
+        
+        <!-- Organic Leaf Integrated -->
+        <path d="M105 50 C105 35 125 20 145 35 C155 45 135 75 105 50 Z" 
+              fill="url(#leafGrad)" />
+        
+        <!-- Small accent dot (corner of a plan) -->
+        <rect x="23" y="13" width="4" height="4" fill="#4A3728" />
+        <rect x="23" y="83" width="4" height="4" fill="#4A3728" />
+    </g>
+
+    <!-- Branding Text -->
+    <text x="165" y="58" class="logo-text deep">DEEP</text>
+    <text x="165" y="82" class="logo-text arq">ARQUITECTURA</text>
+</svg>
