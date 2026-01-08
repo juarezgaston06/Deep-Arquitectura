@@ -189,7 +189,6 @@ nav {
 .hero-image {
     flex: 1;
     height: 100%;
-    background-image: url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&q=80&w=1600');
     background-size: cover;
     background-position: center;
     clip-path: polygon(15% 0%, 100% 0%, 100% 100%, 0% 100%);
