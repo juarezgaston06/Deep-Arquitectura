@@ -5,29 +5,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
-        content="Deep Arquitectura - Estudio de arquitectura especializado en planos municipales y relevamientos. Maestro Mayor de Obra.">
-    <title>Deep Arquitectura | Diseño & Construcción</title>
+        content="Deep Arquitectura - Servicios especializados de gas. Instalaciones, planos, matriculados y mantenimiento profesional.">
+    <title>Deep Arquitectura | Soluciones de Gas</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Dancing+Script:wght@600&display=swap"
         rel="stylesheet">
-    <link rel="icon" type="image/png" href="/logo.png">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Specific adjustments for Gas page */
+        .hero-gas {
+            background-color: #f5f2f0;
+        }
+
+        .service-icon.gas {
+            background: #a67c52;
+            /* Copper-like tone for Gas */
+        }
+
+        .hero-image-gas {
+            background-image: url('/gasista-hero.png');
+        }
+    </style>
 </head>
 
 <body>
     <header id="header">
         <nav>
             <div class="logo">
-                <img src="/logo.png" alt="Deep Arquitectura Logo" class="logo-img">
+                <a href="/"><img src="logo.png" alt="Deep Arquitectura Logo" class="logo-img"></a>
             </div>
             <ul class="nav-links">
-                <li><a href="#hero">Inicio</a></li>
-                <li><a href="#servicios">Servicios</a></li>
-                <li><a href="/electricidad/">Electricidad</a></li>
-                <li><a href="/gas/">Gas</a></li>
-                <li><a href="#sobre-mi">Sobre Mí</a></li>
+                <li><a href="/">Inicio</a></li>
+                <li><a href="#servicios-gas">Servicios</a></li>
                 <li><a href="#contacto">Contacto</a></li>
             </ul>
             <div class="menu-toggle" id="mobile-menu">
@@ -39,113 +51,74 @@
     </header>
 
     <main>
-        <section id="hero" class="hero">
+        <section id="hero" class="hero hero-gas">
             <div class="hero-content">
-                <h1 class="reveal">Arquitectura que <br><span class="highlight">respira</span> vida.</h1>
-                <p class="reveal delay-1">Estudio integral de arquitectura especializado en planos municipales y
-                    relevamientos técnicos.</p>
-                <div class="hero-btns reveal delay-2">
-                    <a href="#contacto" class="btn btn-primary">Iniciar Proyecto</a>
-                    <a href="#servicios" class="btn btn-outline">Nuestros Servicios</a>
+                <span class="subtitle reveal">Instalaciones de Gas</span>
+                <h1 class="reveal delay-1">Seguridad y <br><span class="highlight">confort</span> térmico.</h1>
+                <p class="reveal delay-2">Especialistas matriculados en proyectos de gas para viviendas e industrias.
+                    Soluciones integrales bajo estrictas normas de seguridad.</p>
+                <div class="hero-btns reveal delay-3">
+                    <a href="#contacto" class="btn btn-primary">Pedir Presupuesto</a>
+                    <a href="#servicios-gas" class="btn btn-outline">Proyectos de Gas</a>
                 </div>
             </div>
-            <div class="hero-image reveal fade-in">
-                <!-- Image will be set via CSS or JS -->
+            <div class="hero-image hero-image-gas reveal fade-in">
             </div>
             <div class="leaf-overlay"></div>
         </section>
 
-        <section id="servicios" class="servicios">
+        <section id="servicios-gas" class="servicios">
             <div class="container">
                 <div class="section-header reveal">
-                    <h2>Servicios Profesionales</h2>
-                    <p>Soluciones técnicas y estéticas para cada etapa de tu construcción.</p>
+                    <h2>Servicios de Gas</h2>
+                    <p>Tramitaciones, instalaciones y mantenimiento por gasistas matriculados.</p>
                 </div>
                 <div class="services-grid">
                     <div class="service-card reveal">
-                        <div class="service-icon">
+                        <div class="service-icon gas">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path
+                                    d="M12 2C7 2 3 7 3 12s4 10 9 10 9-5 9-10S17 2 12 2zM12 18c-3.3 0-6-2.7-6-6s2.7-6 6-6 6 2.7 6 6-2.7 6-6 6z" />
+                                <path d="M12 8v8M8 12h8" />
+                            </svg>
+                        </div>
+                        <h3>Instalaciones Internas</h3>
+                        <p>Ejecución integral de cañerías para gas natural o envasado con materiales de alta calidad.
+                        </p>
+                    </div>
+                    <div class="service-card reveal">
+                        <div class="service-icon gas">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path
                                     d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5" />
                             </svg>
                         </div>
-                        <h3>Planos Municipales</h3>
-                        <p>Gestión completa de documentación técnica y aprobación de planos ante organismos municipales.
+                        <h3>Planos & Trámites</h3>
+                        <p>Presentación de proyectos ante organismos, finales de obra y habilitación de medidores.</p>
+                    </div>
+                    <div class="service-card reveal">
+                        <div class="service-icon gas">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path
+                                    d="M13 16V6a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2h7a2 2 0 002-2zM2 9h11M17 19l4-4-4-4M21 15H13" />
+                            </svg>
+                        </div>
+                        <h3>Artefactos & Calefacción</h3>
+                        <p>Colocación y reparación de calderas, termotanques, cocinas y sistemas de calefacción central.
                         </p>
                     </div>
                     <div class="service-card reveal">
-                        <div class="service-icon">
+                        <div class="service-icon gas">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path
-                                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                                    d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                                <path d="M12 9v4M12 17h.01" />
                             </svg>
                         </div>
-                        <h3>Relevamientos</h3>
-                        <p>Medición y actualización de construcciones existentes para regularización y reformas.</p>
-                    </div>
-                    <div class="service-card reveal">
-                        <div class="service-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path
-                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                        </div>
-                        <h3>Diseño de Obra</h3>
-                        <p>Planificación y diseño arquitectónico adaptado a tus necesidades y al entorno natural.</p>
-                    </div>
-                    <div class="service-card reveal">
-                        <div class="service-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                            </svg>
-                        </div>
-                        <h3>Electricidad</h3>
-                        <p>Servicios integrales de electricidad, tableros y mantenimiento para tu hogar o empresa.</p>
-                        <a href="/electricidad/" class="btn-text"
-                            style="color: var(--accent-brown); text-decoration: none; font-weight: 600; font-size: 0.8rem; margin-top: 1rem; display: inline-block;">Ver
-                            más →</a>
-                    </div>
-                    <div class="service-card reveal">
-                        <div class="service-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path
-                                    d="M12 2C7 2 3 7 3 12s4 10 9 10 9-5 9-10S17 2 12 2zM12 18c-3.3 0-6-2.7-6-6s2.7-6 6-6 6 2.7 6 6-2.7 6-6 6zM12 8v8M8 12h8" />
-                            </svg>
-                        </div>
-                        <h3>Instalaciones de Gas</h3>
-                        <p>Servicios matriculados de gas, planos, trámites y mantenimiento integral de artefactos.
-                        </p>
-                        <a href="/gas/" class="btn-text"
-                            style="color: var(--accent-brown); text-decoration: none; font-weight: 600; font-size: 0.8rem; margin-top: 1rem; display: inline-block;">Ver
-                            más →</a>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="sobre-mi" class="sobre-mi">
-            <div class="container overflow-hidden">
-                <div class="about-flex">
-                    <div class="about-image reveal slide-left">
-                        <div class="image-frame">
-                            <img src="/perfil.png" alt="Maestro Mayor de Obra" class="profile-photo">
-                        </div>
-                    </div>
-                    <div class="about-content reveal slide-right">
-                        <span class="subtitle">Maestro Mayor de Obra</span>
-                        <h2>Pasión por la <br>precisión técnica</h2>
-                        <p>Como Maestro Mayor de Obra, mi compromiso es materializar visiones arquitectónicas mediante
-                            una gestión técnica impecable. Mi enfoque combina la rigurosidad de la normativa municipal
-                            con un diseño funcional y estético.</p>
-                        <ul class="features">
-                            <li>Gestión técnica integral</li>
-                            <li>Calidad constructiva</li>
-                            <li>Respeto por el entorno</li>
-                        </ul>
-                        <div class="signature">
-                            <p class="name cursive">Gaston Eduardo Juarez Dover</p>
-                            <p class="role">Director Técnico | Deep Arquitectura</p>
-                        </div>
+                        <h3>Pruebas de Hermeticidad</h3>
+                        <p>Detección de fugas y verificación técnica para garantizar una instalación segura y
+                            reglamentaria.</p>
                     </div>
                 </div>
             </div>
@@ -155,8 +128,8 @@
             <div class="container">
                 <div class="contact-card reveal">
                     <div class="contact-info">
-                        <h2>Consulte por <br>su proyecto</h2>
-                        <p>Estamos aquí para asesorarlo en cada paso del proceso municipal y constructivo.</p>
+                        <h2>Consulta <br>Instalación</h2>
+                        <p>Contáctanos para presupuestar tu obra de gas o regularizar una instalación existente.</p>
                         <div class="info-items">
                             <div class="item">
                                 <strong>WhatsApp:</strong>
@@ -176,9 +149,11 @@
                             <input type="email" placeholder="Correo electrónico" required>
                         </div>
                         <div class="form-group">
-                            <textarea placeholder="Cuéntenos sobre su proyecto" rows="4" required></textarea>
+                            <textarea
+                                placeholder="Detalle su necesidad de gas (Ej: Instalación nueva, habilitación de medidor, planos, etc.)"
+                                rows="4" required></textarea>
                         </div>
-                        <button type="submit" class="btn btn-primary">Enviar Mensaje</button>
+                        <button type="submit" class="btn btn-primary">Enviar Consulta</button>
                     </form>
                 </div>
             </div>
@@ -190,7 +165,7 @@
             <div class="footer-grid">
                 <div class="footer-brand">
                     <div class="logo">
-                        <img src="/logo.png" alt="Deep Arquitectura Logo" class="logo-img">
+                        <a href="/"><img src="logo.png" alt="Deep Arquitectura Logo" class="logo-img"></a>
                     </div>
                 </div>
                 <div class="footer-social">
@@ -231,7 +206,7 @@
         </svg>
         <span>Contáctanos</span>
     </a>
-    <script type="module" src="/main.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 
 </html>
