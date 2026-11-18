@@ -1,0 +1,34 @@
+@page "/mi-obra/tramites"
+@inherits PaginaCliente
+@inject TramitesObra Svc
+
+<PageTitle>Trámites | Mi obra</PageTitle>
+
+<a class="volver" href="/mi-obra/mas">‹ Más</a>
+<h1>Trámites y permisos</h1>
+<p class="suave">En qué está cada trámite de tu obra ante la municipalidad y los demás organismos.</p>
+
+@if (_tramites.Count == 0)
+{
+    <p class="vacio">Todavía no hay trámites cargados.</p>
+}
+@foreach (var t in _tramites)
+{
+    <section class="tarjeta">
+        <strong>@t.Nombre</strong>
+        <span class="suave chico">@t.Organismo @(t.Expediente is null ? "" : "· Exp. " + t.Expediente)</span>
+        <span class="chip @(t.Estado switch { EstadoTramite.Aprobado => "chip-ok", EstadoTramite.Observado or EstadoTramite.Rechazado => "chip-alerta", _ => "" })">@Textos.Etiqueta(t.Estado)</span>
+        <ul class="linea-tiempo">
+            @foreach (var m in t.Movimientos)
+            {
+                <li><span class="suave chico">@Textos.Fecha(m.Fecha)</span> @Textos.Etiqueta(m.Estado)@(m.Nota is null ? "" : ": " + m.Nota)
+                    @if (m.Documento is { VisibleCliente: true }) { <a href="/mi-obra/documentos/@m.DocumentoObraId"> Ver documento</a> }</li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    private List<TramiteObra> _tramites = [];
+    protected override async Task CargarAsync() => _tramites = await Svc.ListaAsync(ObraId, soloVisibles: true);
+}

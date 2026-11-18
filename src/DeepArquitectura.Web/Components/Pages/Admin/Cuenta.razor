@@ -1,0 +1,59 @@
+@page "/admin/cuenta"
+@inject AdminCredentials Credenciales
+
+<PageTitle>Cambiar contraseña | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Cambiar contraseña</h1>
+        <p>Usuario: <strong>@_usuario</strong>. Al cambiarla se cierran las sesiones abiertas en otros dispositivos.</p>
+    </div>
+</div>
+
+<div class="card" style="max-width:460px">
+    @if (Ok is not null)
+    {
+        <div class="alert alert-ok">Listo, la contraseña se cambió. La próxima vez ingresá con la nueva.</div>
+    }
+    else if (MensajeError is { } m)
+    {
+        <div class="alert alert-error">@m</div>
+    }
+
+    <form method="post" action="/cuenta/clave" data-enhance="false">
+        <AntiforgeryToken />
+        <input type="text" name="usuario" value="@_usuario" autocomplete="username" hidden />
+        <div class="field" style="margin-bottom:1rem">
+            <label for="actual">Contraseña actual</label>
+            <input id="actual" name="actual" type="password" autocomplete="current-password" required autofocus />
+        </div>
+        <div class="field" style="margin-bottom:1rem">
+            <label for="nueva">Contraseña nueva</label>
+            <input id="nueva" name="nueva" type="password" autocomplete="new-password" required minlength="@AdminCredentials.LargoMinimo" maxlength="@AdminCredentials.LargoMaximo" />
+            <small class="muted">Mínimo @AdminCredentials.LargoMinimo caracteres.</small>
+        </div>
+        <div class="field" style="margin-bottom:1rem">
+            <label for="repetida">Repetir contraseña nueva</label>
+            <input id="repetida" name="repetida" type="password" autocomplete="new-password" required minlength="@AdminCredentials.LargoMinimo" maxlength="@AdminCredentials.LargoMaximo" />
+        </div>
+        <button class="btn" type="submit">Guardar contraseña</button>
+    </form>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Ok { get; set; }
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    private string _usuario = "";
+
+    // Solo códigos conocidos: el texto nunca sale de la URL (antes se podía mostrar cualquier mensaje con un link armado).
+    private string? MensajeError => Error switch
+    {
+        null or "" => null,
+        "sesion" => "El formulario venció. Volvé a intentarlo.",
+        "limite" => "Demasiados intentos. Esperá unos minutos y probá otra vez.",
+        _ when Enum.TryParse<ErrorCambioClave>(Error, out var e) && Enum.IsDefined(e) => AdminCredentials.Mensaje(e),
+        _ => "No se pudo cambiar la contraseña.",
+    };
+
+    protected override async Task OnInitializedAsync() => _usuario = await Credenciales.UsuarioAsync();
+}

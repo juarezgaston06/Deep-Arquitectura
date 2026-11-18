@@ -1,0 +1,83 @@
+@page "/admin/obras"
+@rendermode InteractiveServer
+
+<PageTitle>Obras | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Obras</h1>
+        <p>Seguimiento de cada trabajo en curso.</p>
+    </div>
+    <a class="btn" href="/admin/obras/nueva">+ Nueva obra</a>
+</div>
+
+<div class="toolbar">
+    <select @bind="_estado" @bind:after="CargarAsync">
+        <option value="">Activas (presupuestadas, en curso, en trámite, pausadas)</option>
+        @foreach (var e in Enum.GetValues<EstadoObra>())
+        {
+            <option value="@e">@Textos.Etiqueta(e)</option>
+        }
+        <option value="todas">Todas</option>
+    </select>
+    <select @bind="_servicio" @bind:after="CargarAsync">
+        <option value="">Todos los servicios</option>
+        @foreach (var s in Enum.GetValues<TipoServicio>())
+        {
+            <option value="@s">@Textos.Etiqueta(s)</option>
+        }
+    </select>
+</div>
+
+<div class="card">
+    @if (_obras.Count == 0)
+    {
+        <p class="empty">No hay obras para mostrar.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Obra</th><th>Cliente</th><th class="hide-mobile">Servicio</th><th>Estado</th><th>Avance</th><th class="hide-mobile">Entrega est.</th></tr></thead>
+            <tbody>
+                @foreach (var o in _obras)
+                {
+                    <tr>
+                        <td><a href="/admin/obras/@o.Id"><strong>@o.Nombre</strong></a><div class="muted">@o.Codigo · @o.Localidad</div></td>
+                        <td><a href="/admin/clientes/@o.ClienteId">@o.Cliente.Nombre</a></td>
+                        <td class="hide-mobile">@Textos.Etiqueta(o.Servicio)</td>
+                        <td><span class="@Textos.ClaseEstado(o.Estado)">@Textos.Etiqueta(o.Estado)</span></td>
+                        <td>
+                            <div class="progress"><div style="width:@(o.PorcentajeAvance)%"></div></div>
+                            <span class="muted">@o.PorcentajeAvance%</span>
+                        </td>
+                        <td class="hide-mobile">@Textos.Fecha(o.FechaEntregaEstimada)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private string _estado = "";
+    private string _servicio = "";
+    private List<Obra> _obras = [];
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var q = db.Obras.AsNoTracking().Include(o => o.Cliente).Include(o => o.Etapas).AsSplitQuery();
+
+        if (_estado == "")
+            q = q.Where(o => o.Estado != EstadoObra.Finalizada && o.Estado != EstadoObra.Cancelada);
+        else if (Enum.TryParse<EstadoObra>(_estado, out var e))
+            q = q.Where(o => o.Estado == e);
+
+        if (Enum.TryParse<TipoServicio>(_servicio, out var s))
+            q = q.Where(o => o.Servicio == s);
+
+        _obras = await q.OrderByDescending(o => o.ActualizadoEn).Take(200).ToListAsync();
+    }
+}

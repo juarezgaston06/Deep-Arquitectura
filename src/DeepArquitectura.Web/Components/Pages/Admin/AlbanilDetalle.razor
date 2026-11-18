@@ -1,0 +1,245 @@
+@page "/admin/albaniles/{Id:int}"
+@rendermode InteractiveServer
+@inject AlbanilService Svc
+
+<PageTitle>@(_a?.Nombre ?? "Albañil") | Deep Arquitectura</PageTitle>
+
+@if (_a is null)
+{
+    <p class="muted">@(_noEncontrado ? "Albañil no encontrado." : "Cargando…")</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>@_a.Nombre</h1>
+            <p>
+                Usuario <strong>@_a.Usuario</strong>@(_a.Oficio is null ? "" : $" · {_a.Oficio}")@(_a.Empresa is null ? "" : $" · {_a.Empresa}") ·
+                cuadrilla de <a href="/admin/capataces/@_a.CapatazId">@_a.Capataz.Nombre</a> ·
+                último acceso @(_a.UltimoAcceso is null ? "nunca" : Textos.Fecha(_a.UltimoAcceso.Value))
+            </p>
+        </div>
+        <div style="display:flex;gap:.75rem;align-items:center">
+            @if (_a.Activo)
+            {
+                <span class="chip chip-ok">activo</span>
+                <button class="btn btn-outline" @onclick="() => CambiarActivo(false)">Desactivar</button>
+            }
+            else
+            {
+                <span class="chip chip-apagado">desactivado</span>
+                <button class="btn" @onclick="() => CambiarActivo(true)">Reactivar</button>
+            }
+        </div>
+    </div>
+
+    @if (_mensaje is not null) { <div class="alert alert-ok">@_mensaje</div> }
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+
+    <div class="kpis">
+        <div class="kpi"><div class="valor">@Textos.Numero((decimal)_horasSemana)</div><div class="label">Horas fichadas (7 días)</div></div>
+        <div class="kpi"><div class="valor">@_diasSemana</div><div class="label">Días trabajados (7 días)</div></div>
+        <div class="kpi"><div class="valor">@_avancesSemana</div><div class="label">Avances enviados (7 días)</div></div>
+        <div class="kpi"><div class="valor">@_tareasAbiertas</div><div class="label">Tareas a su cargo</div></div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <h2>Obras asignadas</h2>
+            <p class="muted" style="margin-bottom:.5rem">Solo obras de su capataz. Si le sacás una (o se la sacás al capataz), deja de verla en el momento.</p>
+            <div class="checks">
+                @foreach (var o in _obras)
+                {
+                    <label>
+                        <input type="checkbox" checked="@o.Asignada" @onchange="ev => Asignar(o.Id, ev.Value is true)" disabled="@(!o.DelCapataz && !o.Asignada)" />
+                        @o.Codigo · @o.Nombre <span class="muted">(@Textos.Etiqueta(o.Estado))</span>
+                        @if (o.Asignada && !o.DelCapataz) { <span class="chip chip-alerta">el capataz ya no la tiene</span> }
+                    </label>
+                }
+                @if (_obras.Count == 0) { <span class="muted">Su capataz no tiene obras asignadas.</span> }
+            </div>
+
+            <h2 style="margin-top:1.5rem">Cuadrilla</h2>
+            <p class="muted" style="margin-bottom:.5rem">Al pasarlo a otro capataz se le quitan las obras que no son del nuevo.</p>
+            <div style="display:flex;gap:.5rem;max-width:420px">
+                <select @bind="_capatazNuevo">
+                    @foreach (var c in _capataces) { <option value="@c.Id">@c.Nombre</option> }
+                </select>
+                <button class="btn btn-sm btn-outline" @onclick="CambiarCapataz" disabled="@(_capatazNuevo == _a.CapatazId)">Cambiar</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Datos</h2>
+            <div class="form-grid">
+                <div class="field"><label>Nombre</label><input @bind="_nombre" maxlength="150" /></div>
+                <div class="field"><label>Teléfono</label><input @bind="_telefono" maxlength="50" /></div>
+                <div class="field">
+                    <label>Oficio</label>
+                    <select @bind="_oficio">
+                        @foreach (var o in DeepArquitectura.Contracts.ValoresAlbanil.Oficios.Union(string.IsNullOrEmpty(_oficio) ? [] : [_oficio])) { <option value="@o">@o</option> }
+                    </select>
+                </div>
+                <div class="field"><label>Empresa (subcontratista)</label><input @bind="_empresa" maxlength="150" /></div>
+            </div>
+            <div class="form-actions"><button class="btn btn-sm" @onclick="GuardarDatos">Guardar</button></div>
+
+            <h2 style="margin-top:1.5rem">Costo para el estudio</h2>
+            <p class="muted" style="margin-bottom:.5rem">Valor de la hora (jornal ÷ horas). Con esto se calcula cuánto cuesta la mano de obra de cada etapa.
+                Un aumento vale desde la próxima fichada.</p>
+            <div style="display:flex;gap:.5rem;max-width:360px;align-items:center">
+                <span>$</span><input type="number" min="0" step="1" @bind="_valorHora" placeholder="Valor hora" />
+                <button class="btn btn-sm" @onclick="GuardarValorHora">Guardar</button>
+            </div>
+            @if (_horasSemana > 0 && _a.ValorHora is decimal vh) { <p class="muted">Esta semana: @Textos.Moneda(vh * (decimal)_horasSemana)</p> }
+
+            <h2 style="margin-top:1.5rem">PIN de acceso</h2>
+            <p class="muted" style="margin-bottom:.5rem">Al cambiarlo se cierra la sesión en su teléfono.</p>
+            <div style="display:flex;gap:.5rem;max-width:360px">
+                <input @bind="_pin" maxlength="@CapatazService.PinMaximo" placeholder="Nuevo PIN" />
+                <button class="btn btn-sm btn-outline" @onclick="() => _pin = Capataces.GenerarPin()">Generar</button>
+                <button class="btn btn-sm" @onclick="CambiarPin" disabled="@string.IsNullOrEmpty(_pin)">Guardar PIN</button>
+            </div>
+
+            <h2 style="margin-top:1.5rem">Teléfonos con sesión abierta</h2>
+            @if (_sesiones.Count == 0)
+            {
+                <p class="muted">Ninguno.</p>
+            }
+            else
+            {
+                <table>
+                    <tbody>
+                        @foreach (var s in _sesiones)
+                        {
+                            <tr><td>@(s.Dispositivo ?? "Teléfono")</td><td class="muted">usado @Textos.Fecha(s.UltimoUso)</td></tr>
+                        }
+                    </tbody>
+                </table>
+                <button class="btn-link btn-danger" style="margin-top:.5rem" @onclick="CerrarSesiones">Cerrar sesión en todos los teléfonos</button>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Asistencia (últimos 14 días)</h2>
+        @if (_jornadas.Count == 0)
+        {
+            <p class="empty">Sin fichadas.</p>
+        }
+        else
+        {
+            <JornadasTabla Jornadas="_jornadas" MostrarAlbanil="false" />
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private record ObraFila(int Id, string Codigo, string Nombre, EstadoObra Estado, bool Asignada, bool DelCapataz);
+    private record CapatazOpcion(int Id, string Nombre);
+
+    private Albanil? _a;
+    private bool _noEncontrado;
+    private List<ObraFila> _obras = [];
+    private List<CapatazOpcion> _capataces = [];
+    private List<SesionAlbanil> _sesiones = [];
+    private List<JornadaAlbanil> _jornadas = [];
+    private int _capatazNuevo, _diasSemana, _avancesSemana, _tareasAbiertas;
+    private double _horasSemana;
+    private string _nombre = "", _telefono = "", _oficio = "", _empresa = "", _pin = "";
+    private string? _mensaje, _error;
+
+    [Inject] private CostosObra Costos { get; set; } = null!;
+    private decimal? _valorHora;
+
+    private async Task GuardarValorHora()
+    {
+        _mensaje = _error = null;
+        var error = await Costos.GuardarValorHoraAsync(Id, _valorHora);
+        if (error is null) { _mensaje = "Valor hora guardado."; await CargarAsync(); } else _error = error;
+    }
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _a = await db.Albaniles.AsNoTracking().Include(a => a.Capataz).SingleOrDefaultAsync(a => a.Id == Id);
+        _noEncontrado = _a is null;
+        if (_a is null) return;
+        _nombre = _a.Nombre;
+        _telefono = _a.Telefono ?? "";
+        _oficio = _a.Oficio ?? "";
+        _empresa = _a.Empresa ?? "";
+        _valorHora = _a.ValorHora;
+        _capatazNuevo = _a.CapatazId;
+
+        var asignadas = await db.AlbanilObras.Where(x => x.AlbanilId == Id).Select(x => x.ObraId).ToListAsync();
+        var delCapataz = await db.CapatazObras.Where(x => x.CapatazId == _a.CapatazId).Select(x => x.ObraId).ToListAsync();
+        // Obras activas del capataz + las asignadas aunque estén cerradas o ya no sean del capataz (para poder quitarlas).
+        _obras = await db.Obras.AsNoTracking()
+            .Where(o => (delCapataz.Contains(o.Id) && o.Estado != EstadoObra.Finalizada && o.Estado != EstadoObra.Cancelada) || asignadas.Contains(o.Id))
+            .OrderBy(o => o.Nombre)
+            .Select(o => new ObraFila(o.Id, o.Codigo, o.Nombre, o.Estado, asignadas.Contains(o.Id), delCapataz.Contains(o.Id)))
+            .ToListAsync();
+        _capataces = await db.Capataces.AsNoTracking().Where(c => c.Activo || c.Id == _a.CapatazId).OrderBy(c => c.Nombre)
+            .Select(c => new CapatazOpcion(c.Id, c.Nombre)).ToListAsync();
+        _sesiones = await db.SesionesAlbanil.AsNoTracking().Where(s => s.AlbanilId == Id).OrderByDescending(s => s.UltimoUso).ToListAsync();
+
+        var desde14 = DateTime.UtcNow.AddDays(-14);
+        var desde7 = DateTime.UtcNow.AddDays(-7);
+        _jornadas = await db.Jornadas.AsNoTracking().Include(j => j.Obra).Include(j => j.Albanil)
+            .Where(j => j.AlbanilId == Id && j.Entrada > desde14).OrderByDescending(j => j.Entrada).ToListAsync();
+        var semana = _jornadas.Where(j => j.Entrada > desde7).ToList();
+        _horasSemana = semana.Sum(j => j.Horas ?? 0);
+        _diasSemana = semana.Select(j => DateOnly.FromDateTime(Textos.AHoraLocal(j.Entrada))).Distinct().Count();
+        _avancesSemana = await db.Registros.CountAsync(r => r.AlbanilId == Id && r.Fecha > desde7);
+        _tareasAbiertas = await db.Tareas.CountAsync(t => t.AlbanilId == Id && (t.Estado == EstadoTarea.Pendiente || t.Estado == EstadoTarea.EnCurso));
+    }
+
+    private async Task Asignar(int obraId, bool asignada)
+    {
+        _error = await Svc.AsignarAsync(Id, obraId, asignada);
+        _mensaje = _error is not null ? null : asignada ? "Obra asignada." : "Obra quitada.";
+        await CargarAsync();
+    }
+
+    private async Task CambiarCapataz()
+    {
+        _error = await Svc.CambiarCapatazAsync(Id, _capatazNuevo);
+        _mensaje = _error is null ? "Cuadrilla cambiada." : null;
+        await CargarAsync();
+    }
+
+    private async Task GuardarDatos()
+    {
+        if (string.IsNullOrWhiteSpace(_nombre)) { _error = "Ingresá el nombre."; return; }
+        await Svc.ActualizarDatosAsync(Id, _nombre, _telefono, _oficio, _empresa);
+        _mensaje = "Datos guardados."; _error = null;
+        await CargarAsync();
+    }
+
+    private async Task CambiarPin()
+    {
+        _error = await Svc.CambiarPinAsync(Id, _pin);
+        _mensaje = _error is null ? $"PIN nuevo: {_pin}. Pasáselo al albañil (no se vuelve a mostrar)." : null;
+        if (_error is null) _pin = "";
+        await CargarAsync();
+    }
+
+    private async Task CambiarActivo(bool activo)
+    {
+        await Svc.CambiarActivoAsync(Id, activo);
+        _mensaje = activo ? "Albañil reactivado." : "Albañil desactivado: ya no puede entrar a la app."; _error = null;
+        await CargarAsync();
+    }
+
+    private async Task CerrarSesiones()
+    {
+        var n = await Svc.CerrarSesionesAsync(Id);
+        _mensaje = $"Se cerraron {n} sesión(es)."; _error = null;
+        await CargarAsync();
+    }
+}

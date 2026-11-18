@@ -1,0 +1,22 @@
+@* Encuesta corta: 0 a 10 y un comentario opcional. *@
+<form method="post" action="/mi-obra/encuestas/@Encuesta.Id" class="tarjeta encuesta">
+    <AntiforgeryToken />
+    <span class="etiqueta">Tu opinión nos ayuda</span>
+    <strong>@Encuesta.Titulo</strong>
+    <p class="suave chico">Del 0 al 10, ¿cuánto nos recomendarías a un amigo o familiar?</p>
+    <div class="escala" role="radiogroup" aria-label="Puntaje del 0 al 10">
+        @for (var i = 0; i <= 10; i++)
+        {
+            var id = $"enc{Encuesta.Id}-{i}";
+            <input type="radio" name="puntaje" id="@id" value="@i" required />
+            <label for="@id">@i</label>
+        }
+    </div>
+    <label for="com@(Encuesta.Id)">¿Algo que quieras contarnos? (opcional)</label>
+    <textarea id="com@(Encuesta.Id)" name="comentario" rows="2" maxlength="2000"></textarea>
+    <button type="submit" class="boton">Enviar</button>
+</form>
+
+@code {
+    [Parameter, EditorRequired] public EncuestaCliente Encuesta { get; set; } = null!;
+}

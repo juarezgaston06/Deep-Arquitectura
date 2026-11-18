@@ -1,0 +1,108 @@
+@page "/admin/obras/{Id:int}/libro"
+@rendermode InteractiveServer
+@inject LibroObra Libro
+
+<PageTitle>Libro de obra | Deep Arquitectura</PageTitle>
+
+@if (_obra is null)
+{
+    <p class="muted">Cargando…</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>Libro de obra</h1>
+            <p><a href="/admin/obras/@Id">@_obra.Codigo · @_obra.Nombre</a> · órdenes de servicio (estudio → obra) y notas de pedido (obra → estudio), numeradas.</p>
+        </div>
+        <button class="btn btn-outline no-print" onclick="window.print()">Imprimir</button>
+    </div>
+
+    @if (_mensaje is not null) { <div class="alert alert-ok">@_mensaje</div> }
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+
+    <div class="card no-print">
+        <h2>@(_respondeA is null ? "Nueva orden de servicio" : $"Responder nota de pedido N° {_respondeA.Numero}")</h2>
+        @if (_respondeA is not null) { <p class="muted">«@_respondeA.Texto»</p> }
+        <textarea rows="3" style="width:100%" maxlength="4000" placeholder="Ej.: Se ordena usar ladrillo hueco del 18 en la medianera norte." @bind="_texto"></textarea>
+        <div class="form-actions">
+            <button class="btn" @onclick="Emitir" disabled="@string.IsNullOrWhiteSpace(_texto)">Asentar orden</button>
+            @if (_respondeA is not null) { <button class="btn-link" @onclick="() => _respondeA = null">Cancelar respuesta</button> }
+        </div>
+        <p class="muted" style="font-size:.85rem">La ven en sus apps el capataz y la cuadrilla, que confirman haberla leído.</p>
+    </div>
+
+    <div class="card">
+        @if (_asientos.Count == 0) { <p class="empty">El libro está vacío.</p> }
+        <ul class="timeline">
+            @foreach (var a in _asientos)
+            {
+                <li>
+                    <div class="fecha">
+                        @Textos.Fecha(a.Fecha) ·
+                        @if (a.Tipo == TipoAsiento.OrdenServicio) { <strong>Orden de servicio N° @a.Numero</strong> <span> · Estudio</span> }
+                        else { <strong>Nota de pedido N° @a.Numero</strong> <span> · @(a.Albanil?.Nombre ?? a.Capataz?.Nombre ?? "Obra")</span> }
+                        @if (a.RespondeA is not null) { <span> · responde a la nota N° @a.RespondeA.Numero</span> }
+                    </div>
+                    <div style="white-space:pre-line">@a.Texto</div>
+                    <MediosGaleria Lista="a.Registro?.Medios" />
+                    @if (a.Tipo == TipoAsiento.OrdenServicio)
+                    {
+                        <div class="muted" style="font-size:.85rem">
+                            Leída por: @(a.Lecturas.Count == 0 ? "nadie todavía" : string.Join(", ", a.Lecturas.OrderBy(l => l.LeidoEn).Select(l => $"{l.Capataz?.Nombre ?? l.Albanil?.Nombre} ({Textos.Fecha(l.LeidoEn)})")))
+                            @{ var faltan = Faltan(a); }
+                            @if (faltan.Count > 0) { <span class="chip chip-alerta" style="margin-left:.4rem">falta: @string.Join(", ", faltan)</span> }
+                        </div>
+                    }
+                    else if (!_asientos.Any(x => x.RespondeAId == a.Id))
+                    {
+                        <button class="btn-link no-print" style="padding:0" @onclick="() => { _respondeA = a; _texto = string.Empty; }">Responder con una orden</button>
+                    }
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Obra? _obra;
+    private List<AsientoLibro> _asientos = [];
+    private List<(int? CapatazId, int? AlbanilId, string Nombre)> _equipo = [];
+    private AsientoLibro? _respondeA;
+    private string _texto = "";
+    private string? _mensaje, _error;
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _obra = await db.Obras.AsNoTracking().SingleOrDefaultAsync(o => o.Id == Id);
+        _asientos = await db.Asientos.AsNoTracking()
+            .Include(a => a.Capataz).Include(a => a.Albanil).Include(a => a.RespondeA)
+            .Include(a => a.Lecturas).ThenInclude(l => l.Capataz).Include(a => a.Lecturas).ThenInclude(l => l.Albanil)
+            .Include(a => a.Registro).ThenInclude(r => r!.Medios)
+            .Where(a => a.ObraId == Id).OrderByDescending(a => a.Fecha).AsSplitQuery().ToListAsync();
+        var capataces = await db.CapatazObras.Where(x => x.ObraId == Id && x.Capataz.Activo).Select(x => new { x.CapatazId, x.Capataz.Nombre }).ToListAsync();
+        var albaniles = await db.AlbanilObras.Where(x => x.ObraId == Id && x.Albanil.Activo).Select(x => new { x.AlbanilId, x.Albanil.Nombre }).ToListAsync();
+        _equipo = [.. capataces.Select(c => ((int?)c.CapatazId, (int?)null, c.Nombre)), .. albaniles.Select(a => ((int?)null, (int?)a.AlbanilId, a.Nombre))];
+    }
+
+    /// <summary>Del equipo actual de la obra, quién todavía no la leyó.</summary>
+    private List<string> Faltan(AsientoLibro a) => _equipo
+        .Where(e => !a.Lecturas.Any(l => (e.CapatazId != null && l.CapatazId == e.CapatazId) || (e.AlbanilId != null && l.AlbanilId == e.AlbanilId)))
+        .Select(e => e.Nombre).ToList();
+
+    private async Task Emitir()
+    {
+        var (id, error) = await Libro.EmitirOrdenAsync(Id, _texto, _respondeA?.Id);
+        _error = error;
+        if (id is null) return;
+        _mensaje = "Orden asentada. Ya la ve la obra.";
+        _texto = "";
+        _respondeA = null;
+        await CargarAsync();
+    }
+}

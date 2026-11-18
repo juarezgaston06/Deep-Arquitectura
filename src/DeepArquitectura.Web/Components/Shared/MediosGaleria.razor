@@ -1,0 +1,21 @@
+@* Fotos y videos de una entrada de bitácora (servidos por /admin/medios, con login). *@
+@if (Lista is { Count: > 0 })
+{
+    <div class="medios">
+        @foreach (var m in Lista.OrderBy(m => m.Id))
+        {
+            @if (m.Tipo == TipoMedio.Foto)
+            {
+                <a href="/admin/medios/@m.Id" target="_blank"><img src="/admin/medios/@m.Id" loading="lazy" alt="Foto de obra" /></a>
+            }
+            else
+            {
+                <video src="/admin/medios/@m.Id" controls preload="metadata"></video>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<MedioRegistro>? Lista { get; set; }
+}

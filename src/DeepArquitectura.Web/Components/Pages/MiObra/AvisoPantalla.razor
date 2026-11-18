@@ -1,0 +1,12 @@
+@* Muestra (una sola vez) el resultado del último envío: lo deja el endpoint en una cookie corta. *@
+@if (_aviso is { } a)
+{
+    <div class="aviso @(a.Ok ? "aviso-ok" : "aviso-error")" role="@(a.Ok ? "status" : "alert")">@a.Texto</div>
+}
+
+@code {
+    [CascadingParameter] private HttpContext? Http { get; set; }
+    private (string Texto, bool Ok)? _aviso;
+
+    protected override void OnInitialized() => _aviso = Http is null ? null : AvisoCliente.Tomar(Http);
+}

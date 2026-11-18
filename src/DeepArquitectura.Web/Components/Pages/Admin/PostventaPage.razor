@@ -1,0 +1,157 @@
+@page "/admin/postventa"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Postventa Svc
+
+<PageTitle>Garantía y pagos informados | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Garantía y pagos informados</h1>
+        <p>Lo que mandan los clientes desde su app: problemas después de la entrega y pagos con comprobante para confirmar.</p>
+    </div>
+    <label style="display:flex;gap:.4rem;align-items:center"><input type="checkbox" @bind="_soloAbiertos" @bind:after="CargarAsync" /> Solo lo pendiente</label>
+</div>
+
+@if (_error is not null) { <div class="alert alert-error">@_error</div> }
+@if (_ok is not null) { <div class="alert alert-ok">@_ok</div> }
+
+<div class="card">
+    <h2>Pagos informados por clientes</h2>
+    @if (_pagos.Count == 0) { <p class="empty">Nada para confirmar.</p> }
+    @foreach (var p in _pagos)
+    {
+        <div style="border-top:1px solid var(--line);padding:.6rem 0">
+            <strong>@Textos.Moneda(p.Monto)</strong> · @p.Medio · @Textos.Fecha(p.Fecha) · <a href="/admin/obras/@p.ObraId">@p.Obra.Codigo @p.Obra.Nombre</a>
+            <span class="@Textos.ClaseEstado(p.Estado)">@Textos.Etiqueta(p.Estado)</span>
+            <div class="muted">
+                Informó @(p.InformadoPor ?? "el cliente") el @Textos.Fecha(p.InformadoEn)
+                @if (p.Certificado is not null) { <span> · por el certificado N° @p.Certificado.Numero (@Textos.Moneda(p.Certificado.Monto))</span> }
+                @if (p.Nota is not null) { <span> · «@p.Nota»</span> }
+                @if (p.MotivoRechazo is not null) { <span> · rechazado: @p.MotivoRechazo</span> }
+            </div>
+            <AdjuntosGaleria Items="p.Adjuntos" />
+            @if (p.Estado == EstadoPagoInformado.Pendiente)
+            {
+                <div class="form-actions">
+                    <button class="btn btn-sm" @onclick="() => ConfirmarAsync(p.Id)">Confirmar (entró la plata)</button>
+                    <input placeholder="Motivo si no lo encontrás" @bind="_motivo" style="max-width:280px" />
+                    <button class="btn-link btn-danger" @onclick="() => RechazarAsync(p.Id)">Rechazar</button>
+                </div>
+            }
+        </div>
+    }
+    <p class="muted" style="font-size:.8rem;margin-top:.5rem">Al confirmar se suma a los pagos de la obra y, si cubre el certificado informado, el certificado queda pagado.</p>
+</div>
+
+<div class="card">
+    <h2>Reclamos de garantía</h2>
+    @if (_reclamos.Count == 0) { <p class="empty">Sin reclamos.</p> }
+    @foreach (var r in _reclamos)
+    {
+        <div style="border-top:1px solid var(--line);padding:.6rem 0">
+            <strong>@r.Rubro</strong> @if (r.Urgente) { <span class="chip chip-alerta">urgente</span> } <span class="@Textos.ClaseEstado(r.Estado)">@Textos.Etiqueta(r.Estado)</span>
+            · <a href="/admin/obras/@r.ObraId/cierre">@r.Obra.Codigo @r.Obra.Nombre</a>
+            <div>@r.Descripcion</div>
+            <div class="muted">@r.Ubicacion · @Textos.Fecha(r.Fecha) · @(r.ReportadoPor ?? "")</div>
+            <AdjuntosGaleria Items="r.Adjuntos" />
+
+            @if (_abierto == r.Id)
+            {
+                <div class="form-grid" style="margin-top:.5rem">
+                    <div class="field">
+                        <label>Estado</label>
+                        <select @bind="_rev.Estado">@foreach (var e in Enum.GetValues<EstadoReclamo>()) { <option value="@e">@Textos.Etiqueta(e)</option> }</select>
+                    </div>
+                    <div class="field"><label>Fecha de visita</label><input type="date" @bind="_rev.FechaVisita" /></div>
+                    <div class="field full"><label>Respuesta al cliente (la ve en su app)</label><textarea rows="2" @bind="_rev.Respuesta" maxlength="2000"></textarea></div>
+                    <div class="field">
+                        <label>Causa</label>
+                        <select @bind="_rev.Causa"><option value="">—</option>@foreach (var c in Enum.GetValues<CausaReclamo>()) { <option value="@c">@Textos.Etiqueta(c)</option> }</select>
+                    </div>
+                    <div class="field">
+                        <label>Etapa de origen</label>
+                        <select @bind="_rev.EtapaObraId"><option value="">—</option>@foreach (var e in _etapas.Where(e => e.ObraId == r.ObraId)) { <option value="@e.Id">@e.Nombre</option> }</select>
+                    </div>
+                    <div class="field"><label>Responsable</label><input @bind="_rev.Responsable" maxlength="150" placeholder="Oficio, empresa o persona" /></div>
+                    <div class="field"><label>Costo de la reparación ($)</label><input type="number" min="0" @bind="_rev.CostoReparacion" /></div>
+                    <div class="field full"><label>Nota interna</label><input @bind="_rev.NotaInterna" maxlength="2000" /></div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-sm" @onclick="() => RevisarAsync(r.Id)">Guardar</button>
+                    <SubirAdjuntos Texto="Foto de la reparación" OnSubir="a => FotoAsync(r.Id, a)" />
+                    <button class="btn-link" @onclick="() => _abierto = null">Cerrar</button>
+                </div>
+            }
+            else
+            {
+                @if (r.Respuesta is not null) { <div><em>Respuesta:</em> @r.Respuesta</div> }
+                <button class="btn btn-sm btn-outline" style="margin-top:.3rem" @onclick="() => Abrir(r)">Revisar</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "obra")] public int? ObraId { get; set; }
+    private bool _soloAbiertos = true;
+    private List<PagoInformado> _pagos = [];
+    private List<ReclamoGarantia> _reclamos = [];
+    private List<EtapaObra> _etapas = [];
+    private int? _abierto;
+    private Postventa.DatosRevision _rev = new();
+    private string? _motivo, _error, _ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ObraId is not null) _soloAbiertos = false;
+        await CargarAsync();
+        await Svc.MarcarReclamosVistosAsync(ObraId);
+    }
+
+    private async Task CargarAsync()
+    {
+        _pagos = await Svc.PagosInformadosAsync(ObraId, _soloAbiertos);
+        _reclamos = await Svc.ReclamosAsync(ObraId, _soloAbiertos);
+        var obras = _reclamos.Select(r => r.ObraId).Distinct().ToList();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _etapas = await db.Etapas.AsNoTracking().Where(e => obras.Contains(e.ObraId)).OrderBy(e => e.Orden).ToListAsync();
+    }
+
+    private void Abrir(ReclamoGarantia r)
+    {
+        _abierto = r.Id;
+        _rev = new()
+        {
+            Estado = r.Estado == EstadoReclamo.Nuevo ? EstadoReclamo.EnRevision : r.Estado, Respuesta = r.Respuesta, FechaVisita = r.FechaVisita,
+            Causa = r.Causa, EtapaObraId = r.EtapaObraId, Responsable = r.Responsable, CostoReparacion = r.CostoReparacion, NotaInterna = r.NotaInterna,
+        };
+    }
+
+    private async Task Hacer(Task<string?> t, string ok)
+    {
+        var error = await t;
+        _error = error; _ok = error is null ? ok : null;
+        if (error is null) await CargarAsync();
+    }
+
+    private async Task RevisarAsync(int id)
+    {
+        await Hacer(Svc.RevisarReclamoAsync(id, _rev), "Reclamo actualizado.");
+        if (_error is null) _abierto = null;
+    }
+
+    private async Task<string?> FotoAsync(int id, IReadOnlyCollection<Adjuntos.Archivo> a)
+    {
+        var error = await Svc.FotosResolucionReclamoAsync(id, a);
+        if (error is null) await CargarAsync();
+        return error;
+    }
+
+    private Task ConfirmarAsync(int id) => Hacer(Svc.ConfirmarPagoAsync(id), "Pago confirmado y sumado a la obra.");
+
+    private async Task RechazarAsync(int id)
+    {
+        await Hacer(Svc.RechazarPagoAsync(id, _motivo), "Pago rechazado: el cliente ve el motivo.");
+        if (_error is null) _motivo = null;
+    }
+}

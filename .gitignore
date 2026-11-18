@@ -3,3 +3,18 @@ node_modules/
 dist/
 .env
 .vscode/
+.vs/
+
+# .NET
+bin/
+obj/
+publish/
+*.user
+TestResults/
+site.zip
+
+# Claude Code: settings locales de cada máquina (los agentes en .claude/agents sí se versionan)
+.claude/settings.local.json
+
+# Fotos/videos de obra subidos en desarrollo
+App_Data/

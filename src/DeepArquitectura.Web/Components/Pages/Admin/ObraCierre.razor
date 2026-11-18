@@ -1,0 +1,204 @@
+@page "/admin/obras/{Id:int}/cierre"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Postventa Svc
+@inject Adjuntos AdjuntosSvc
+
+<PageTitle>Entrega y garantía | Deep Arquitectura</PageTitle>
+
+@if (_obra is null) { <p class="muted">Cargando…</p> return; }
+
+<div class="page-head">
+    <div>
+        <h1>Entrega, garantía y encuestas · @_obra.Codigo</h1>
+        <p><a href="/admin/obras/@Id">← @_obra.Nombre</a></p>
+    </div>
+</div>
+
+@if (_error is not null) { <div class="alert alert-error">@_error</div> }
+@if (_ok is not null) { <div class="alert alert-ok">@_ok</div> }
+@if (!_tieneAcceso) { <div class="alert alert-info">El cliente no tiene acceso a la app: para que vea el acta, firme y pueda reclamar, generale el código en <a href="/admin/obras/@Id/cliente">App del cliente</a>.</div> }
+
+@* ---------------- Acta de entrega ---------------- *@
+<div class="card">
+    <h2>Acta de entrega @if (_acta is not null) { <span class="@Textos.ClaseEstado(_acta.Estado)">@Textos.Etiqueta(_acta.Estado)</span> }</h2>
+    @if (_acta is null)
+    {
+        <p class="muted">Recorré la obra con el cliente, cargá cada detalle a resolver con foto, y cuando esté lista publicala para que la firme desde su app.</p>
+        <div class="form-grid">
+            <div class="field"><label>Fecha de la recorrida</label><input type="date" @bind="_fechaRecorrida" /></div>
+            <div class="field"><label>Meses de garantía</label><input type="number" min="0" max="120" @bind="_meses" /></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-sm" @onclick="CrearActaAsync">Empezar el acta</button></div>
+    }
+    else
+    {
+        <p class="muted">
+            Recorrida @Textos.Fecha(_acta.FechaRecorrida) · garantía @_acta.MesesGarantia meses
+            @if (Postventa.GarantiaHasta(_acta) is DateOnly g) { <span> (hasta el @Textos.Fecha(g))</span> }
+        </p>
+        @if (_acta.Estado == EstadoActa.Firmada)
+        {
+            <p>Firmada por <strong>@_acta.FirmadaPor</strong> el @Textos.Fecha(_acta.FirmadaEn!.Value) desde @_acta.FirmadaDesdeIp
+                @if (_acta.ConReservas) { <span class="chip chip-alerta">con reservas</span> }</p>
+            @if (_acta.ComentarioCliente is not null) { <blockquote>«@_acta.ComentarioCliente»</blockquote> }
+        }
+
+        <h3>Observaciones (@_acta.Observaciones.Count(o => !o.Resuelta) pendientes de @_acta.Observaciones.Count)</h3>
+        @foreach (var o in _acta.Observaciones)
+        {
+            <div style="border-top:1px solid var(--line);padding:.6rem 0">
+                <strong>@o.Descripcion</strong> @if (o.Resuelta) { <span class="chip chip-ok">resuelta @Textos.Dia(o.ResueltaEn!.Value)</span> } else { <span class="chip chip-alerta">pendiente</span> }
+                <div class="muted">@o.Ubicacion @(o.Rubro is null ? "" : "· " + o.Rubro) @(o.Responsable is null ? "" : "· a cargo de " + o.Responsable)</div>
+                @if (o.NotaResolucion is not null) { <div>@o.NotaResolucion</div> }
+                <AdjuntosGaleria Items="o.Adjuntos" />
+                <div class="form-actions" style="margin-top:.3rem">
+                    @if (!o.Resuelta)
+                    {
+                        <input placeholder="Cómo se resolvió" @bind="_notaResolucion" style="max-width:280px" />
+                        <button class="btn btn-sm" @onclick="() => ResolverAsync(o.Id, true)">Marcar resuelta</button>
+                    }
+                    else if (_acta.Estado != EstadoActa.Firmada)
+                    {
+                        <button class="btn-link" @onclick="() => ResolverAsync(o.Id, false)">Reabrir</button>
+                    }
+                    <SubirAdjuntos Texto="@(o.Resuelta ? "Foto del después" : "Agregar foto")" OnSubir="a => FotoObservacionAsync(o, a)" />
+                    @if (_acta.Estado != EstadoActa.Firmada) { <button class="btn-link btn-danger" @onclick="() => BorrarObservacionAsync(o.Id)">Borrar</button> }
+                </div>
+            </div>
+        }
+
+        @if (_acta.Estado != EstadoActa.Firmada)
+        {
+            <h3 style="margin-top:1rem">Nueva observación</h3>
+            <div class="form-grid">
+                <div class="field full"><label>Qué hay que resolver</label><input @bind="_obs.Descripcion" maxlength="1000" placeholder="Ej. Falta sellar el zócalo de la ducha" /></div>
+                <div class="field"><label>Dónde</label><input @bind="_obs.Ubicacion" maxlength="150" placeholder="Baño planta alta" /></div>
+                <div class="field">
+                    <label>Rubro</label>
+                    <select @bind="_obs.Rubro"><option value="">—</option>@foreach (var r in Postventa.Rubros) { <option value="@r">@r</option> }</select>
+                </div>
+                <div class="field"><label>A cargo de</label><input @bind="_obs.Responsable" maxlength="150" placeholder="Oficio o empresa" /></div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-sm" @onclick="AgregarObservacionAsync">Agregar</button>
+                @if (_acta.Estado == EstadoActa.Borrador)
+                {
+                    <button class="btn btn-sm btn-outline" @onclick="PublicarAsync">Publicar al cliente para que firme</button>
+                }
+            </div>
+        }
+    }
+</div>
+
+<div class="grid-2">
+    @* ---------------- Reclamos ---------------- *@
+    <div class="card">
+        <h2>Reclamos de garantía</h2>
+        @if (_reclamos.Count == 0) { <p class="empty">El cliente no reportó problemas.</p> }
+        else
+        {
+            <ul style="margin-left:1rem">
+                @foreach (var r in _reclamos)
+                {
+                    <li>@Textos.Dia(r.Fecha) · @r.Rubro: @r.Descripcion <span class="@Textos.ClaseEstado(r.Estado)">@Textos.Etiqueta(r.Estado)</span></li>
+                }
+            </ul>
+        }
+        <a class="btn btn-sm btn-outline" href="/admin/postventa?obra=@Id">Revisar y responder →</a>
+    </div>
+
+    @* ---------------- Encuestas y permiso ---------------- *@
+    <div class="card">
+        <h2>Encuestas</h2>
+        @if (_encuestas.Count == 0) { <p class="empty">Se piden solas en la app del cliente al completar cada etapa y al firmar el acta.</p> }
+        else
+        {
+            <table>
+                <tbody>
+                    @foreach (var e in _encuestas)
+                    {
+                        <tr>
+                            <td>@e.Titulo</td>
+                            <td>@(e.Puntaje is int p ? $"{p}/10" : "sin responder")</td>
+                            <td>@e.Comentario</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <h2 style="margin-top:1rem">Permiso para mostrar la obra</h2>
+        @if (_permiso is null) { <p class="muted">El cliente todavía no respondió (se le pregunta en su app). Sin permiso, no publiques fotos reconocibles ni su nombre.</p> }
+        else
+        {
+            <p>
+                Fotos: <strong>@(_permiso.UsarFotos ? "sí" : "no")</strong> · nombre: <strong>@(_permiso.MostrarNombre ? "sí" : "no, anónimo")</strong>
+                <span class="muted">(@_permiso.Nombre, @Textos.Fecha(_permiso.ActualizadoEn))</span>
+            </p>
+            @if (_permiso.Testimonio is not null) { <blockquote>«@_permiso.Testimonio»</blockquote> }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Obra? _obra;
+    private bool _tieneAcceso;
+    private ActaEntrega? _acta;
+    private List<ReclamoGarantia> _reclamos = [];
+    private List<EncuestaCliente> _encuestas = [];
+    private PermisoDifusion? _permiso;
+    private DateOnly? _fechaRecorrida = Textos.HoyLocal();
+    private int _meses = 12;
+    private Postventa.DatosObservacion _obs = new();
+    private string? _notaResolucion, _error, _ok;
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _obra = await db.Obras.AsNoTracking().SingleOrDefaultAsync(o => o.Id == Id);
+        if (_obra is null) { _error = "La obra no existe."; _obra = new Obra(); return; }
+        _tieneAcceso = await db.AccesosCliente.AnyAsync(a => a.ObraId == Id && a.Activo);
+        _acta = await Svc.ActaAsync(Id);
+        _reclamos = await Svc.ReclamosAsync(Id);
+        _encuestas = await Svc.EncuestasAsync(Id);
+        _permiso = await Svc.PermisoAsync(Id);
+        await Svc.MarcarEncuestasVistasAsync(Id);
+    }
+
+    private async Task Hacer(Task<string?> t, string ok)
+    {
+        var error = await t;
+        _error = error; _ok = error is null ? ok : null;
+        if (error is null) await CargarAsync();
+    }
+
+    private async Task CrearActaAsync()
+    {
+        var (_, error) = await Svc.CrearActaAsync(Id, _fechaRecorrida, _meses);
+        await Hacer(Task.FromResult(error), "Acta creada.");
+    }
+
+    private async Task AgregarObservacionAsync()
+    {
+        await Hacer(Svc.AgregarObservacionAsync(_acta!.Id, _obs), "Observación agregada. Podés sumarle fotos.");
+        if (_error is null) _obs = new();
+    }
+
+    private async Task ResolverAsync(int id, bool resuelta)
+    {
+        await Hacer(Svc.ResolverObservacionAsync(id, resuelta, _notaResolucion), resuelta ? "Marcada resuelta." : "Reabierta.");
+        _notaResolucion = null;
+    }
+
+    private async Task<string?> FotoObservacionAsync(ObservacionEntrega o, IReadOnlyCollection<Adjuntos.Archivo> a)
+    {
+        var error = await AdjuntosSvc.AgregarAsync(Id, "entrega", a, x => x.ObservacionEntregaId = o.Id, esResolucion: o.Resuelta);
+        if (error is null) await CargarAsync();
+        return error;
+    }
+
+    private Task BorrarObservacionAsync(int id) => Hacer(Svc.BorrarObservacionAsync(id), "Observación borrada.");
+    private Task PublicarAsync() => Hacer(Svc.PublicarActaAsync(_acta!.Id), "Publicada: el cliente ya la ve en su app y puede firmar.");
+}

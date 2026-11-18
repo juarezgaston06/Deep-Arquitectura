@@ -1,0 +1,234 @@
+@page "/admin/redes"
+@rendermode InteractiveServer
+@using DeepArquitectura.Web.Agents
+@using Microsoft.Agents.AI
+@inject CommunityManagerAgent Agente
+@inject ILogger<Redes> Logger
+@implements IDisposable
+
+<PageTitle>Redes | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Redes sociales</h1>
+        <p>Pedile contenido al agente: lo deja como borrador para que lo revises antes de publicar.</p>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h2>Agente Community Manager</h2>
+        @if (!Agente.Disponible)
+        {
+            <div class="alert alert-info">
+                El agente no está configurado. Cargá <code>AzureOpenAI:Endpoint</code>, <code>AzureOpenAI:ApiKey</code>
+                y <code>AzureOpenAI:Deployment</code> en la configuración de la app.
+            </div>
+        }
+        else
+        {
+            <div class="quick">
+                @foreach (var (etiqueta, prompt) in Atajos)
+                {
+                    <button class="btn btn-sm btn-outline" disabled="@_pensando" @onclick="() => Enviar(prompt)">@etiqueta</button>
+                }
+            </div>
+
+            <div class="chat" id="chat">
+                @foreach (var m in _mensajes)
+                {
+                    <div class="msg @(m.EsUsuario ? "user" : "agent")">@m.Texto</div>
+                }
+                @if (_pensando && string.IsNullOrEmpty(_mensajes.LastOrDefault()?.Texto))
+                {
+                    <div class="msg agent muted">Pensando…</div>
+                }
+            </div>
+
+            @if (_error is not null)
+            {
+                <div class="alert alert-error" style="margin-top:.75rem">@_error</div>
+            }
+
+            <div style="display:flex;gap:.5rem;margin-top:1rem">
+                <textarea rows="2" @bind="_entrada" @bind:event="oninput" placeholder="Ej: Armame un carrusel sobre qué es un relevamiento y cuándo conviene hacerlo" disabled="@_pensando"></textarea>
+                <button class="btn" @onclick="() => Enviar(_entrada)" disabled="@(_pensando || string.IsNullOrWhiteSpace(_entrada))">Enviar</button>
+            </div>
+            @if (_mensajes.Count > 0)
+            {
+                <button class="btn-link" style="margin-top:.5rem" @onclick="NuevaConversacion" disabled="@_pensando">Nueva conversación</button>
+            }
+        }
+    </div>
+
+    <div class="card">
+        <h2>Publicaciones</h2>
+        <div class="toolbar">
+            <select @bind="_filtro" @bind:after="CargarPublicaciones">
+                <option value="">Borradores y aprobadas</option>
+                @foreach (var e in Enum.GetValues<EstadoPublicacion>())
+                {
+                    <option value="@e">@e</option>
+                }
+            </select>
+        </div>
+        @if (_publicaciones.Count == 0)
+        {
+            <p class="empty">Todavía no hay publicaciones.</p>
+        }
+        else
+        {
+            <table>
+                <tbody>
+                    @foreach (var p in _publicaciones)
+                    {
+                        <tr>
+                            <td>
+                                <button class="btn-link" style="padding:0;text-align:left" @onclick="() => _abierta = _abierta == p.Id ? null : p.Id"><strong>@p.Titulo</strong></button>
+                                <div class="muted">
+                                    @p.Red · @Textos.Etiqueta(p.Formato) · @Textos.Etiqueta(p.Pilar)
+                                    @if (p.FechaProgramada is not null) { <span> · @Textos.Fecha(p.FechaProgramada)</span> }
+                                    @if (p.GeneradaPorIA) { <span> · IA</span> }
+                                </div>
+                            </td>
+                            <td><span class="@Textos.ClaseEstado(p.Estado)">@p.Estado</span></td>
+                        </tr>
+                        @if (_abierta == p.Id)
+                        {
+                            <tr>
+                                <td colspan="2">
+                                    <div class="contenido-md">@p.Contenido</div>
+                                    <div class="field" style="margin-top:.5rem">
+                                        <label>Link para la bio o el posteo (así sabemos qué consultas trajo)</label>
+                                        <input readonly onclick="this.select()" value="@EstudioService.LinkConSeguimiento(Nav.BaseUri, p.Red, p.Id)" />
+                                        <span class="muted">Consultas que llegaron por esta publicación: @_consultasPorPub.GetValueOrDefault(p.Id)</span>
+                                    </div>
+                                    <div class="form-actions">
+                                        @if (p.Estado == EstadoPublicacion.Borrador)
+                                        {
+                                            <button class="btn btn-sm" @onclick="() => CambiarEstado(p.Id, EstadoPublicacion.Aprobada)">Aprobar</button>
+                                        }
+                                        @if (p.Estado != EstadoPublicacion.Publicada)
+                                        {
+                                            <button class="btn btn-sm btn-outline" @onclick="() => CambiarEstado(p.Id, EstadoPublicacion.Publicada)">Marcar publicada</button>
+                                        }
+                                        @if (p.Estado != EstadoPublicacion.Descartada)
+                                        {
+                                            <button class="btn-link btn-danger" @onclick="() => CambiarEstado(p.Id, EstadoPublicacion.Descartada)">Descartar</button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public int? ObraId { get; set; }
+
+    private record Mensaje(bool EsUsuario)
+    {
+        public string Texto { get; set; } = "";
+    }
+
+    private static readonly (string, string)[] Atajos =
+    [
+        ("Calendario semanal", "Armame el calendario de contenido de la semana que viene (lunes a domingo) y guardá cada pieza como borrador."),
+        ("Contenido de obras", "Revisá las novedades de obra de los últimos 30 días aptas para redes y proponé 2 piezas de 'Obra y proceso'. Guardalas como borrador."),
+        ("Carrusel educativo", "Armá un carrusel educativo de Instagram sobre un trámite municipal que todavía no hayamos tratado. Guardalo como borrador."),
+        ("Tip de seguridad", "Armá un video corto para TikTok/Reels con un tip de seguridad en instalaciones acorde a la estación del año. Guardalo como borrador."),
+    ];
+
+    private readonly List<Mensaje> _mensajes = [];
+    private AgentSession? _sesion;
+    private CancellationTokenSource _cts = new();
+    private string _entrada = "";
+    private bool _pensando;
+    private string? _error;
+
+    private string _filtro = "";
+    private List<Publicacion> _publicaciones = [];
+    private int? _abierta;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ObraId is int id)
+            _entrada = $"Usá las novedades de la obra #{id} (ObraId {id}) para armar un Reel/TikTok y un carrusel de Instagram mostrando el proceso. Guardalos como borrador vinculados a esa obra.";
+        await CargarPublicaciones();
+    }
+
+    private async Task CargarPublicaciones()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var q = db.Publicaciones.AsNoTracking();
+        q = Enum.TryParse<EstadoPublicacion>(_filtro, out var e)
+            ? q.Where(p => p.Estado == e)
+            : q.Where(p => p.Estado == EstadoPublicacion.Borrador || p.Estado == EstadoPublicacion.Aprobada);
+        _publicaciones = await q.OrderBy(p => p.FechaProgramada == null).ThenBy(p => p.FechaProgramada)
+            .ThenByDescending(p => p.CreadoEn).Take(100).ToListAsync();
+        var ids = _publicaciones.Select(p => p.Id).ToList();
+        _consultasPorPub = await db.Consultas.Where(c => c.PublicacionId != null && ids.Contains(c.PublicacionId.Value))
+            .GroupBy(c => c.PublicacionId!.Value).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N);
+    }
+
+    private Dictionary<int, int> _consultasPorPub = [];
+
+    private async Task Enviar(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto) || _pensando) return;
+        _error = null;
+        _pensando = true;
+        _entrada = "";
+        _mensajes.Add(new Mensaje(true) { Texto = texto.Trim() });
+        var respuesta = new Mensaje(false);
+        _mensajes.Add(respuesta);
+        StateHasChanged();
+
+        try
+        {
+            _sesion ??= await Agente.NuevaSesionAsync();
+            await foreach (var update in Agente.ConversarAsync(texto, _sesion, _cts.Token))
+            {
+                if (string.IsNullOrEmpty(update.Text)) continue;
+                respuesta.Texto += update.Text;
+                StateHasChanged();
+            }
+            await CargarPublicaciones(); // el agente pudo haber guardado borradores
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error del agente CM");
+            _error = "El agente no pudo responder. Probá de nuevo en un momento.";
+            if (respuesta.Texto.Length == 0) _mensajes.Remove(respuesta);
+        }
+        finally
+        {
+            _pensando = false;
+        }
+    }
+
+    private void NuevaConversacion()
+    {
+        _mensajes.Clear();
+        _sesion = null;
+        _error = null;
+    }
+
+    private async Task CambiarEstado(int id, EstadoPublicacion estado)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Publicaciones.Where(p => p.Id == id).ExecuteUpdateAsync(s => s.SetProperty(p => p.Estado, estado));
+        await CargarPublicaciones();
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

@@ -1,0 +1,152 @@
+@page "/admin"
+@rendermode InteractiveServer
+@inject AvanceObra Avance
+@inject ResumenDiario Resumenes
+@inject GestionCliente GestionClientes
+
+<PageTitle>Panel | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Buen día</h1>
+        <p>@Textos.HoyLocal().ToString("dddd d 'de' MMMM", new System.Globalization.CultureInfo("es-AR"))</p>
+    </div>
+    <a class="btn" href="/admin/obras/nueva">+ Nueva obra</a>
+</div>
+
+@if (_cargando)
+{
+    <p class="muted">Cargando…</p>
+}
+else
+{
+    <div class="kpis">
+        <a class="kpi" href="/admin/consultas"><div class="valor">@_consultasNuevas</div><div class="label">Consultas nuevas</div></a>
+        <a class="kpi" href="/admin/obras"><div class="valor">@_obrasActivas</div><div class="label">Obras activas</div></a>
+        <a class="kpi" href="/admin/clientes"><div class="valor">@_clientes</div><div class="label">Clientes</div></a>
+        <a class="kpi" href="/admin/redes"><div class="valor">@_borradores</div><div class="label">Borradores para redes</div></a>
+        <a class="kpi" href="/admin/campo?tab=pedidos"><div class="valor">@_pedidosPendientes</div><div class="label">Pedidos de material pendientes</div></a>
+        <a class="kpi" href="/admin/campo?tab=problemas"><div class="valor">@_problemasAbiertos</div><div class="label">Problemas en obra sin resolver</div></a>
+        <a class="kpi" href="/admin/campo?tab=validar"><div class="valor">@_porValidar</div><div class="label">Avances por validar</div></a>
+        <a class="kpi" href="/admin/resumen"><div class="valor">@_atrasadas.Count</div><div class="label">Tareas atrasadas</div></a>
+        <a class="kpi" href="/admin/app-cliente"><div class="valor">@(_clienteNovedades.Mensajes + _clienteNovedades.Respuestas)</div><div class="label">Mensajes y respuestas de clientes</div></a>
+        <a class="kpi" href="/admin/postventa"><div class="valor">@_postventa?.ReclamosAbiertos</div><div class="label">Reclamos de garantía abiertos@(_postventa?.ReclamosNuevos > 0 ? $" ({_postventa.ReclamosNuevos} nuevos)" : "")</div></a>
+        <a class="kpi" href="/admin/postventa"><div class="valor">@_postventa?.PagosPorConfirmar</div><div class="label">Pagos informados por confirmar</div></a>
+    </div>
+
+    @if (_tramitesPorVencer.Count > 0)
+    {
+        <div class="card">
+            <h2>Trámites que vencen esta semana</h2>
+            <ul style="margin:0 0 0 1rem">
+                @foreach (var t in _tramitesPorVencer)
+                {
+                    <li><a href="/admin/obras/@t.ObraId/tramites">@t.Obra.Codigo</a> · @t.Nombre (@Textos.Etiqueta(t.Estado)) — vence @Textos.Fecha(t.Vence)</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @if (_alertas.Count > 0)
+    {
+        <div class="card">
+            <h2>Hoy en las obras <a class="btn-link" href="/admin/resumen" style="font-size:.9rem">ver resumen completo</a></h2>
+            <ul style="margin:0 0 0 1rem">
+                @foreach (var (obra, a) in _alertas)
+                {
+                    <li><span class="@(a.Nivel == 2 ? "chip chip-alerta" : "chip")">@(a.Nivel == 2 ? "urgente" : "atender")</span> <a href="/admin/obras/@obra.Id">@obra.Codigo</a> · @a.Texto</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <div class="grid-2">
+        <div class="card">
+            <h2>Obras activas</h2>
+            @if (_obras.Count == 0)
+            {
+                <p class="empty">No hay obras en curso.</p>
+            }
+            else
+            {
+                <table>
+                    <thead><tr><th>Obra</th><th>Estado</th><th>Avance</th></tr></thead>
+                    <tbody>
+                        @foreach (var o in _obras)
+                        {
+                            <tr>
+                                <td><a href="/admin/obras/@o.Id">@o.Nombre</a><div class="muted">@o.Codigo · @o.Cliente.Nombre</div></td>
+                                <td><span class="@Textos.ClaseEstado(o.Estado)">@Textos.Etiqueta(o.Estado)</span></td>
+                                <td><div class="progress" title="@o.PorcentajeAvance%"><div style="width:@(o.PorcentajeAvance)%"></div></div></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="card">
+            <h2>Últimas novedades de obra</h2>
+            @if (_novedades.Count == 0)
+            {
+                <p class="empty">Todavía no hay registros en la bitácora.</p>
+            }
+            else
+            {
+                <ul class="timeline">
+                    @foreach (var r in _novedades)
+                    {
+                        <li>
+                            <div class="fecha">@Textos.Fecha(r.Fecha) · <a href="/admin/obras/@r.ObraId">@r.Obra.Codigo</a></div>
+                            <strong>@r.Titulo</strong>
+                            @if (r.UsableEnRedes) { <span class="chip">apta redes</span> }
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Inject] private Postventa Postventa { get; set; } = null!;
+    [Inject] private TramitesObra Tramites { get; set; } = null!;
+    private Postventa.Novedades? _postventa;
+    private List<TramiteObra> _tramitesPorVencer = [];
+    private bool _cargando = true;
+    private int _consultasNuevas, _obrasActivas, _clientes, _borradores, _pedidosPendientes, _problemasAbiertos, _porValidar;
+    private List<TareaObra> _atrasadas = [];
+    private (int Mensajes, int Respuestas) _clienteNovedades;
+    private List<(ResumenDiario.Obra Obra, ResumenDiario.Alerta Alerta)> _alertas = [];
+    private List<Obra> _obras = [];
+    private List<RegistroAvance> _novedades = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var activas = new[] { EstadoObra.EnCurso, EstadoObra.EnTramiteMunicipal, EstadoObra.Pausada };
+
+        _consultasNuevas = await db.Consultas.CountAsync(c => c.Estado == EstadoConsulta.Nueva);
+        _obrasActivas = await db.Obras.CountAsync(o => activas.Contains(o.Estado));
+        _clientes = await db.Clientes.CountAsync();
+        _borradores = await db.Publicaciones.CountAsync(p => p.Estado == EstadoPublicacion.Borrador);
+        _pedidosPendientes = await db.Pedidos.CountAsync(p => p.Estado == EstadoPedido.Pendiente);
+        _problemasAbiertos = await db.Problemas.CountAsync(p => p.Estado != EstadoProblema.Resuelto);
+        _porValidar = await db.Registros.CountAsync(r => r.Validacion == EstadoValidacion.Pendiente);
+        _atrasadas = await Avance.AtrasadasAsync();
+        _clienteNovedades = await GestionClientes.NovedadesAsync();
+        _postventa = await Postventa.NovedadesAsync();
+        _tramitesPorVencer = await Tramites.PorVencerAsync();
+        _alertas = (await Resumenes.GenerarAsync(Textos.HoyLocal()))
+            .SelectMany(o => o.Alertas.Where(a => a.Nivel > 0).Select(a => (o, a)))
+            .OrderByDescending(x => x.a.Nivel).Take(10).ToList();
+
+        _obras = await db.Obras.AsNoTracking().Include(o => o.Cliente).Include(o => o.Etapas)
+            .Where(o => activas.Contains(o.Estado))
+            .OrderBy(o => o.FechaEntregaEstimada ?? DateOnly.MaxValue).Take(10).ToListAsync();
+
+        _novedades = await db.Registros.AsNoTracking().Include(r => r.Obra)
+            .OrderByDescending(r => r.Fecha).Take(8).ToListAsync();
+        _cargando = false;
+    }
+}

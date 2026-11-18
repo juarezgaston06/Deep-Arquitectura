@@ -1,0 +1,307 @@
+@page "/admin/obras/{Id:int}/cliente"
+@* Sin prerender: abrir la página marca mensajes y respuestas como vistos, y con dos pasadas se perdían las insignias. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject GestionCliente Gestion
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+
+<PageTitle>App del cliente | Deep Arquitectura</PageTitle>
+
+@if (_obra is null)
+{
+    <p class="muted">@(_noEncontrada ? "Obra no encontrada." : "Cargando…")</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>App del cliente</h1>
+            <p><a href="/admin/obras/@Id">@_obra.Codigo · @_obra.Nombre</a> · @_obra.Cliente.Nombre</p>
+        </div>
+    </div>
+
+    @if (_mensaje is not null) { <div class="alert alert-ok">@_mensaje</div> }
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+
+    @* ---- Acceso ---- *@
+    <div class="card">
+        <h2>Acceso</h2>
+        @if (_nuevo is { } n)
+        {
+            <div class="alert alert-info">
+                <strong>Código: @n.Codigo · PIN: @n.Pin</strong><br />
+                Anotalo o mandalo ahora: el PIN no se vuelve a mostrar.
+            </div>
+            <textarea readonly rows="8" style="width:100%" onclick="this.select()">@Invitacion(n)</textarea>
+            <div class="toolbar" style="margin-top:.5rem">
+                <a class="btn btn-sm" target="_blank" href="@($"https://wa.me/{Telefono}?text={Uri.EscapeDataString(Invitacion(n))}")">Enviar por WhatsApp</a>
+                @if (_obra.Cliente.Email is { } mail)
+                {
+                    <a class="btn btn-sm btn-outline" href="@($"mailto:{mail}?subject={Uri.EscapeDataString($"Seguí tu obra {_obra.Nombre}")}&body={Uri.EscapeDataString(Invitacion(n))}")">Enviar por email</a>
+                }
+            </div>
+        }
+        @if (_acceso is null)
+        {
+            <p class="muted">Todavía no tiene acceso. Se genera un código de obra y un PIN de 6 números para mandarle al cliente.</p>
+            <button class="btn btn-sm" @onclick="() => Generar(false)">Generar código y PIN</button>
+        }
+        else
+        {
+            <p>
+                Código <strong>@_acceso.Codigo</strong> ·
+                @if (_acceso.Activo) { <span class="chip chip-ok">Activo</span> } else { <span class="chip chip-apagado">Desactivado</span> }
+                · @(_acceso.UltimoIngreso is DateTime u ? $"último ingreso {Textos.Fecha(u)}" : "todavía no ingresó")
+                @if (_acceso.BloqueadoHasta is DateTime b && b > DateTime.UtcNow) { <span class="chip chip-alerta">bloqueado por intentos hasta @Textos.Fecha(b)</span> }
+            </p>
+            <div class="toolbar" style="margin:0">
+                <button class="btn btn-sm btn-outline" @onclick="() => Generar(false)">@(_acceso.Activo ? "Dar PIN nuevo" : "Reactivar con PIN nuevo")</button>
+                <button class="btn-link" @onclick="() => Generar(true)">Cambiar código</button>
+                @if (_acceso.Activo) { <button class="btn-link btn-danger" @onclick="Desactivar">Desactivar</button> }
+                <a class="btn-link" href="/mi-obra/entrar?codigo=@_acceso.Codigo" target="_blank">Abrir la app ↗</a>
+            </div>
+            <p class="muted" style="font-size:.8rem">Un PIN nuevo o desactivar cierra la sesión en los teléfonos que ya entraron.</p>
+        }
+    </div>
+
+    <div class="toolbar">
+        <button class="@Pestania("mensajes")" @onclick='() => _tab = "mensajes"'>Mensajes @if (_sinLeer > 0) { <span class="chip chip-alerta">@_sinLeer</span> }</button>
+        <button class="@Pestania("aprobaciones")" @onclick='() => _tab = "aprobaciones"'>Aprobaciones @if (_respuestasNuevas > 0) { <span class="chip chip-alerta">@_respuestasNuevas</span> }</button>
+        <button class="@Pestania("documentos")" @onclick='() => _tab = "documentos"'>Documentos (@_documentos.Count)</button>
+    </div>
+
+    @switch (_tab)
+    {
+        case "mensajes":
+            <div class="card">
+                @if (_mensajes.Count == 0) { <p class="empty">Sin mensajes todavía.</p> }
+                <ul class="timeline">
+                    @foreach (var m in _mensajes)
+                    {
+                        <li style="@(m.DelCliente ? "" : "background:#f6efe7;padding:.4rem .6rem;border-radius:6px")">
+                            <div class="fecha">@Textos.Fecha(m.Fecha) · @(m.DelCliente ? $"Cliente{(m.Autor is null ? "" : $" ({m.Autor})")}" : "Estudio")
+                                @if (!m.DelCliente) { <span class="muted">@(m.LeidoEn is null ? " · sin leer" : " · leído")</span> }</div>
+                            <div style="white-space:pre-wrap">@m.Texto</div>
+                        </li>
+                    }
+                </ul>
+                <div class="field full" style="margin-top:.75rem">
+                    <label>Responder</label>
+                    <textarea rows="3" @bind="_respuesta" maxlength="@AppCliente.LargoMaximoMensaje"></textarea>
+                </div>
+                <button class="btn btn-sm" style="margin-top:.5rem" @onclick="Responder">Enviar</button>
+                <p class="muted" style="font-size:.8rem">El cliente lo ve en la app (Mensajes). Por ahora no le llega aviso al teléfono.</p>
+            </div>
+            break;
+
+        case "aprobaciones":
+            <div class="card">
+                <h2>Pedir una decisión</h2>
+                <div class="form-grid">
+                    <div class="field full"><label>Título</label><input @bind="_ap.Titulo" maxlength="200" placeholder="Ej.: Cerámico del baño" /></div>
+                    <div class="field full"><label>Descripción</label><textarea rows="3" @bind="_ap.Descripcion" maxlength="4000"></textarea></div>
+                    <div class="field full"><label>Opciones (una por línea; vacío = aprobar / no aprobar)</label><textarea rows="3" @bind="_ap.Opciones"></textarea></div>
+                    <div class="field"><label>Costo adicional ($, opcional)</label><input type="number" min="0" step="1" @bind="_ap.Monto" /></div>
+                    <div class="field"><label>Responder antes del</label><input type="date" @bind="_ap.FechaLimite" /></div>
+                    <div class="field">
+                        <label>Adjunto (de Documentos)</label>
+                        <select @bind="_ap.DocumentoObraId">
+                            <option value="">Sin adjunto</option>
+                            @foreach (var d in _documentos) { <option value="@d.Id">@d.Titulo</option> }
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-sm" style="margin-top:.75rem" @onclick="PedirAprobacion">Enviar al cliente</button>
+                <p class="muted" style="font-size:.8rem">Si aprueba un costo adicional, se suma al total de la obra en su pantalla de pagos.</p>
+            </div>
+            <div class="card">
+                @if (_aprobaciones.Count == 0) { <p class="empty">No pediste aprobaciones todavía.</p> }
+                else
+                {
+                    <table>
+                        <thead><tr><th>Pedido</th><th>Estado</th><th>Respuesta</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var a in _aprobaciones)
+                            {
+                                <tr>
+                                    <td><strong>@a.Titulo</strong>@if (a.Monto is decimal mo) { <div class="muted">@Textos.Moneda(mo)</div> }
+                                        <div class="muted">pedida @Textos.Dia(a.CreadoEn)@(a.FechaLimite is DateOnly f ? $" · antes del {Textos.Fecha(f)}" : "")</div></td>
+                                    <td><span class="@Textos.ClaseEstado(a.Estado)">@Textos.Etiqueta(a.Estado)</span></td>
+                                    <td>
+                                        @if (a.RespondidoEn is DateTime r)
+                                        {
+                                            @if (a.OpcionElegida is not null) { <strong>@a.OpcionElegida</strong><br /> }
+                                            @if (a.Comentario is not null) { <span>«@a.Comentario»</span><br /> }
+                                            <span class="muted">@a.RespondidoPor · @Textos.Fecha(r) · IP @a.RespondidoDesdeIp</span>
+                                        }
+                                    </td>
+                                    <td>@if (a.Estado == EstadoAprobacion.Pendiente) { <button class="btn-link btn-danger" @onclick="() => Anular(a.Id)">Anular</button> }</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            break;
+
+        default:
+            <div class="card">
+                <h2>Subir documento</h2>
+                <div class="form-grid">
+                    <div class="field"><label>Título</label><input @bind="_docTitulo" maxlength="200" placeholder="Ej.: Plano de planta" /></div>
+                    <div class="field">
+                        <label>Tipo</label>
+                        <select @bind="_docCategoria">
+                            @foreach (var c in Enum.GetValues<CategoriaDocumento>()) { <option value="@c">@Textos.Etiqueta(c)</option> }
+                        </select>
+                    </div>
+                    <div class="field"><label>Archivo (PDF, imagen, Word, Excel; hasta 50 MB)</label><InputFile OnChange="Elegir" accept="@AccesoClientes.AceptaDocumentos" /></div>
+                    <div class="field"><label>&nbsp;</label><label style="display:flex;gap:.4rem;align-items:center;text-transform:none"><input type="checkbox" @bind="_docVisible" /> Visible para el cliente</label></div>
+                </div>
+                <button class="btn btn-sm" style="margin-top:.75rem" disabled="@(_archivo is null || _subiendo)" @onclick="Subir">@(_subiendo ? "Subiendo…" : "Subir")</button>
+            </div>
+            <div class="card">
+                @if (_documentos.Count == 0) { <p class="empty">Sin documentos.</p> }
+                else
+                {
+                    <table>
+                        <thead><tr><th>Documento</th><th>Tipo</th><th>Subido</th><th>Cliente</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var d in _documentos)
+                            {
+                                <tr>
+                                    <td><a href="/admin/documentos/@d.Id" target="_blank">@d.Titulo</a></td>
+                                    <td>@Textos.Etiqueta(d.Categoria)</td>
+                                    <td>@Textos.Dia(d.CreadoEn)</td>
+                                    <td><input type="checkbox" checked="@d.VisibleCliente" @onchange="e => CambiarVisible(d.Id, e.Value is true)" /></td>
+                                    <td><button class="btn-link btn-danger" @onclick="() => BorrarDocumento(d.Id)">Borrar</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            break;
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Obra? _obra;
+    private bool _noEncontrada;
+    private AccesoCliente? _acceso;
+    private (string Codigo, string Pin)? _nuevo;
+    private string _tab = "mensajes";
+    private string? _mensaje, _error, _respuesta;
+    private List<MensajeObra> _mensajes = [];
+    private List<AprobacionCliente> _aprobaciones = [];
+    private List<DocumentoObra> _documentos = [];
+    private int _sinLeer, _respuestasNuevas;
+    private GestionCliente.DatosAprobacion _ap = new();
+    private string? _docTitulo;
+    private CategoriaDocumento _docCategoria = CategoriaDocumento.Plano;
+    private bool _docVisible = true, _subiendo;
+    private IBrowserFile? _archivo;
+
+    private string Pestania(string tab) => _tab == tab ? "btn btn-sm" : "btn btn-sm btn-outline";
+    private string Telefono => new((_obra?.Cliente.Telefono ?? "").Where(char.IsAsciiDigit).ToArray());
+    private string Invitacion((string Codigo, string Pin) n) =>
+        GestionCliente.Invitacion(_obra!.Nombre, $"{Nav.BaseUri}mi-obra/entrar?codigo={n.Codigo}", n.Codigo, n.Pin);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using (var db = await DbFactory.CreateDbContextAsync())
+            _obra = await db.Obras.AsNoTracking().Include(o => o.Cliente).SingleOrDefaultAsync(o => o.Id == Id);
+        _noEncontrada = _obra is null;
+        if (_obra is null) return;
+        // Contar lo nuevo antes de abrir (abrir marca como leído / visto).
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            _sinLeer = await db.Mensajes.CountAsync(m => m.ObraId == Id && m.DelCliente && m.LeidoEn == null);
+            _respuestasNuevas = await db.Aprobaciones.CountAsync(a => a.ObraId == Id && !a.RespuestaVista
+                && a.Estado != EstadoAprobacion.Pendiente && a.Estado != EstadoAprobacion.Anulada);
+        }
+        if (_sinLeer == 0 && _respuestasNuevas > 0) _tab = "aprobaciones";
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _acceso = await Gestion.AccesoAsync(Id);
+        _mensajes = await Gestion.MensajesAsync(Id);
+        _aprobaciones = await Gestion.AprobacionesAsync(Id);
+        _documentos = await Gestion.DocumentosAsync(Id);
+    }
+
+    private void Avisar(string? error, string ok) { _error = error; _mensaje = error is null ? ok : null; }
+
+    private async Task Generar(bool nuevoCodigo)
+    {
+        _nuevo = await Gestion.GenerarAccesoAsync(Id, nuevoCodigo);
+        Avisar(null, "Acceso listo. Mandale el código y el PIN al cliente.");
+        _acceso = await Gestion.AccesoAsync(Id);
+    }
+
+    private async Task Desactivar()
+    {
+        await Gestion.DesactivarAccesoAsync(Id);
+        _nuevo = null;
+        Avisar(null, "Acceso desactivado: el código deja de funcionar.");
+        _acceso = await Gestion.AccesoAsync(Id);
+    }
+
+    private async Task Responder()
+    {
+        var error = await Gestion.ResponderAsync(Id, _respuesta);
+        Avisar(error, "Respuesta enviada.");
+        if (error is null) { _respuesta = null; _sinLeer = 0; _mensajes = await Gestion.MensajesAsync(Id); }
+    }
+
+    private async Task PedirAprobacion()
+    {
+        var (_, error) = await Gestion.PedirAprobacionAsync(Id, _ap);
+        Avisar(error, "Aprobación enviada al cliente.");
+        if (error is null) { _ap = new(); _aprobaciones = await Gestion.AprobacionesAsync(Id); }
+    }
+
+    private async Task Anular(int id)
+    {
+        Avisar(await Gestion.AnularAprobacionAsync(id), "Aprobación anulada.");
+        _aprobaciones = await Gestion.AprobacionesAsync(Id);
+    }
+
+    private void Elegir(InputFileChangeEventArgs e)
+    {
+        _archivo = e.File;
+        _docTitulo ??= Path.GetFileNameWithoutExtension(e.File.Name);
+    }
+
+    private async Task Subir()
+    {
+        if (_archivo is not { } f) return;
+        _subiendo = true;
+        try
+        {
+            if (f.Size > AccesoClientes.TamanoMaximoDocumento) { Avisar("El archivo supera los 50 MB.", ""); return; }
+            var (_, error) = await Gestion.SubirDocumentoAsync(Id, _docTitulo, _docCategoria, _docVisible, f.Name, f.Size,
+                () => f.OpenReadStream(AccesoClientes.TamanoMaximoDocumento));
+            Avisar(error, "Documento subido.");
+            if (error is null) { _archivo = null; _docTitulo = null; _documentos = await Gestion.DocumentosAsync(Id); }
+        }
+        finally { _subiendo = false; }
+    }
+
+    private async Task CambiarVisible(int id, bool visible)
+    {
+        await Gestion.CambiarVisibleAsync(id, visible);
+        _documentos = await Gestion.DocumentosAsync(Id);
+    }
+
+    private async Task BorrarDocumento(int id)
+    {
+        await Gestion.BorrarDocumentoAsync(id);
+        Avisar(null, "Documento borrado.");
+        _documentos = await Gestion.DocumentosAsync(Id);
+        _aprobaciones = await Gestion.AprobacionesAsync(Id);
+    }
+}

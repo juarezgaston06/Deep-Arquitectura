@@ -1,0 +1,138 @@
+@page "/admin/obras/{Id:int}/tramites"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject TramitesObra Svc
+
+<PageTitle>Trámites | Deep Arquitectura</PageTitle>
+
+@if (_obra is null) { <p class="muted">Cargando…</p> return; }
+
+<div class="page-head">
+    <div>
+        <h1>Trámites e inspecciones · @_obra.Codigo</h1>
+        <p><a href="/admin/obras/@Id">← @_obra.Nombre</a> · Cada cambio queda con fecha: así se sabe cuánto tarda cada organismo. Los visibles los ve el cliente en su app.</p>
+    </div>
+</div>
+
+@if (_error is not null) { <div class="alert alert-error">@_error</div> }
+@if (_ok is not null) { <div class="alert alert-ok">@_ok</div> }
+
+<div class="card">
+    <div class="form-grid">
+        <div class="field"><label>Trámite</label><input @bind="_nombre" maxlength="200" placeholder="Ej. Permiso de edificación" /></div>
+        <div class="field"><label>Organismo</label><input @bind="_organismo" maxlength="150" placeholder="Ej. Municipalidad de Córdoba" /></div>
+    </div>
+    <div class="form-actions">
+        <button class="btn btn-sm" @onclick="AgregarAsync">Agregar</button>
+        @if (TramitesObra.Sugeridos(_obra.Servicio).Count > 0)
+        {
+            <button class="btn btn-sm btn-outline" @onclick="SugeridosAsync">Agregar los típicos de @Textos.Etiqueta(_obra.Servicio)</button>
+        }
+    </div>
+</div>
+
+@foreach (var t in _tramites)
+{
+    <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+            <div>
+                <h2 style="margin:0">@t.Nombre <span class="@Textos.ClaseEstado(t.Estado)">@Textos.Etiqueta(t.Estado)</span></h2>
+                <p class="muted">
+                    @t.Organismo @(t.Expediente is null ? "" : " · Exp. " + t.Expediente)
+                    @if (t.FechaPresentado is not null) { <span> · presentado @Textos.Fecha(t.FechaPresentado)</span> }
+                    @if (TramitesObra.DiasHastaAprobacion(t) is int dias) { <span> · aprobado en @dias días</span> }
+                    @if (t.Vence is DateOnly v) { <span class="@(v <= Textos.HoyLocal().AddDays(3) ? "chip chip-alerta" : "chip")">vence @Textos.Fecha(v)</span> }
+                </p>
+            </div>
+            <div>
+                <label style="display:flex;gap:.4rem;align-items:center"><input type="checkbox" checked="@t.VisibleCliente" @onchange="e => VisibleAsync(t.Id, e.Value is true)" /> Visible para el cliente</label>
+                <button class="btn-link btn-danger" @onclick="() => BorrarAsync(t.Id)">Borrar</button>
+            </div>
+        </div>
+
+        @if (_abierto == t.Id)
+        {
+            <div class="form-grid" style="margin-top:.5rem">
+                <div class="field"><label>Fecha</label><input type="date" @bind="_mov.Fecha" /></div>
+                <div class="field">
+                    <label>Nuevo estado</label>
+                    <select @bind="_mov.Estado">@foreach (var e in Enum.GetValues<EstadoTramite>()) { <option value="@e">@Textos.Etiqueta(e)</option> }</select>
+                </div>
+                <div class="field"><label>N° de expediente</label><input @bind="_mov.Expediente" maxlength="80" placeholder="@t.Expediente" /></div>
+                <div class="field"><label>Próximo vencimiento</label><input type="date" @bind="_mov.Vence" /></div>
+                <div class="field">
+                    <label>Respuesta del organismo (documento)</label>
+                    <select @bind="_mov.DocumentoObraId"><option value="">—</option>@foreach (var d in _documentos) { <option value="@d.Id">@d.Titulo</option> }</select>
+                </div>
+                <div class="field full"><label>Nota</label><textarea rows="2" @bind="_mov.Nota" maxlength="2000" placeholder="Qué pasó (si observaron, qué hay que corregir)"></textarea></div>
+            </div>
+            <p class="muted" style="font-size:.8rem">Para adjuntar la respuesta, subila primero en <a href="/admin/obras/@Id/cliente">Documentos</a> (categoría Permisos).</p>
+            <div class="form-actions">
+                <button class="btn btn-sm" @onclick="() => MoverAsync(t.Id)">Guardar movimiento</button>
+                <button class="btn-link" @onclick="() => _abierto = null">Cancelar</button>
+            </div>
+        }
+        else
+        {
+            <button class="btn btn-sm btn-outline" @onclick="() => Abrir(t)">Registrar movimiento</button>
+        }
+
+        <ul style="margin:.75rem 0 0 1rem">
+            @foreach (var m in t.Movimientos)
+            {
+                <li>@Textos.Fecha(m.Fecha) · <strong>@Textos.Etiqueta(m.Estado)</strong> @(m.Nota is null ? "" : "— " + m.Nota)
+                    @if (m.Documento is not null) { <a href="/admin/documentos/@m.DocumentoObraId" target="_blank"> (@m.Documento.Titulo)</a> }</li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Obra? _obra;
+    private List<TramiteObra> _tramites = [];
+    private List<DocumentoObra> _documentos = [];
+    private string? _nombre, _organismo, _error, _ok;
+    private int? _abierto;
+    private TramitesObra.DatosMovimiento _mov = new();
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _obra = await db.Obras.AsNoTracking().SingleOrDefaultAsync(o => o.Id == Id);
+        if (_obra is null) { _error = "La obra no existe."; _obra = new Obra(); return; }
+        _documentos = await db.Documentos.AsNoTracking().Where(d => d.ObraId == Id).OrderByDescending(d => d.CreadoEn).ToListAsync();
+        _tramites = await Svc.ListaAsync(Id);
+    }
+
+    private void Abrir(TramiteObra t)
+    {
+        _abierto = t.Id;
+        _mov = new() { Fecha = Textos.HoyLocal(), Estado = t.Estado == EstadoTramite.Preparando ? EstadoTramite.Presentado : t.Estado, Vence = t.Vence };
+    }
+
+    private async Task AgregarAsync()
+    {
+        var (_, error) = await Svc.AgregarAsync(Id, _nombre, _organismo);
+        _error = error; _ok = error is null ? "Trámite agregado." : null;
+        if (error is null) { _nombre = _organismo = null; await CargarAsync(); }
+    }
+
+    private async Task SugeridosAsync()
+    {
+        var n = await Svc.AgregarSugeridosAsync(Id);
+        _ok = n == 0 ? "Ya estaban todos." : $"Se agregaron {n} trámite(s)."; _error = null;
+        await CargarAsync();
+    }
+
+    private async Task MoverAsync(int tramiteId)
+    {
+        var error = await Svc.MoverAsync(tramiteId, _mov);
+        _error = error; _ok = error is null ? "Movimiento guardado." : null;
+        if (error is null) { _abierto = null; await CargarAsync(); }
+    }
+
+    private async Task VisibleAsync(int id, bool visible) { await Svc.CambiarVisibleAsync(id, visible); await CargarAsync(); }
+    private async Task BorrarAsync(int id) { await Svc.BorrarAsync(id); await CargarAsync(); }
+}

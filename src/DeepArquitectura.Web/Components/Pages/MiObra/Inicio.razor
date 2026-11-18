@@ -1,0 +1,110 @@
+@page "/mi-obra"
+@inherits PaginaCliente
+@inject AppCliente App
+
+<PageTitle>@(_i?.Vista.Obra ?? "Mi obra") | Deep Arquitectura</PageTitle>
+
+@if (_i is { } i)
+{
+    var v = i.Vista;
+    var avance = (int)(v.AvanceFisico ?? v.AvanceEtapas);
+    <section class="portada">
+        <h1>@v.Obra</h1>
+        <p class="suave">@v.Localidad · <span class="@Textos.ClaseEstado(v.Estado)">@Textos.Etiqueta(v.Estado)</span></p>
+
+        <div class="anillo" style="--p:@avance" role="img" aria-label="Avance de obra @avance por ciento">
+            <div><strong>@avance%</strong><span>de avance</span></div>
+        </div>
+
+        <div class="datos">
+            @if (i.EtapaActual is not null) { <div><span>Etapa actual</span><strong>@i.EtapaActual</strong></div> }
+            <div><span>Etapas terminadas</span><strong>@v.Etapas.Count(e => e.Estado == EstadoEtapa.Completada) de @v.Etapas.Count</strong></div>
+            @if (v.EntregaEstimada is DateOnly ent) { <div><span>Entrega estimada</span><strong>@Textos.Fecha(ent)</strong></div> }
+            @if (v.Actualizado is DateTime u) { <div><span>Última novedad</span><strong>@Textos.Dia(u)</strong></div> }
+        </div>
+    </section>
+
+    <AvisoPantalla />
+
+    @if (_acta is { Estado: EstadoActa.Abierta })
+    {
+        <a class="tarjeta tarjeta-alerta" href="/mi-obra/entrega">
+            <span class="etiqueta">Entrega de la obra</span>
+            <strong>Revisá el acta de entrega y firmala</strong>
+            <span class="flecha" aria-hidden="true">›</span>
+        </a>
+    }
+
+    @foreach (var e in _encuestas.Take(1))
+    {
+        <EncuestaTarjeta Encuesta="e" />
+    }
+
+    @foreach (var a in i.Pendientes)
+    {
+        <a class="tarjeta tarjeta-alerta" href="/mi-obra/aprobaciones/@a.Id">
+            <span class="etiqueta">Necesitamos tu respuesta</span>
+            <strong>@a.Titulo</strong>
+            @if (a.FechaLimite is DateOnly lim) { <span class="suave">Antes del @Textos.Fecha(lim)</span> }
+            <span class="flecha" aria-hidden="true">›</span>
+        </a>
+    }
+    @if (i.AprobacionesPendientes > i.Pendientes.Count)
+    {
+        <a class="enlace" href="/mi-obra/aprobaciones">Ver las @i.AprobacionesPendientes consultas pendientes ›</a>
+    }
+    @if (i.MensajesNuevos > 0)
+    {
+        <a class="tarjeta tarjeta-info" href="/mi-obra/mensajes">
+            <strong>@(i.MensajesNuevos == 1 ? "Tenés un mensaje nuevo del estudio" : $"Tenés {i.MensajesNuevos} mensajes nuevos del estudio")</strong>
+            <span class="flecha" aria-hidden="true">›</span>
+        </a>
+    }
+
+    @if (v.Bitacora.Count > 0)
+    {
+        <h2>Últimas novedades</h2>
+        @foreach (var e in v.Bitacora.Take(3))
+        {
+            <article class="tarjeta novedad">
+                @if (e.Medios.FirstOrDefault(m => !m.EsVideo) is { } foto)
+                {
+                    <img src="/mi-obra/medios/@foto.MedioId" alt="" loading="lazy" />
+                }
+                <div>
+                    <span class="suave chico">@Textos.Dia(e.Fecha)@(e.Etapa is null ? "" : $" · {e.Etapa}")</span>
+                    <strong>@e.Titulo</strong>
+                    @if (e.Descripcion is not null) { <p>@e.Descripcion</p> }
+                </div>
+            </article>
+        }
+        <a class="enlace" href="/mi-obra/fotos">Ver todas las fotos y videos ›</a>
+    }
+
+    @if (i.Saldo is decimal saldo)
+    {
+        <a class="tarjeta" href="/mi-obra/pagos">
+            <span class="etiqueta">Saldo de la obra</span>
+            <strong class="grande">@Textos.Moneda(saldo)</strong>
+            <span class="flecha" aria-hidden="true">›</span>
+        </a>
+    }
+}
+else
+{
+    <p class="vacio">No encontramos la obra. Pedile un código nuevo al estudio.</p>
+}
+
+@code {
+    [Inject] private Postventa Postventa { get; set; } = null!;
+    private AppCliente.Inicio? _i;
+    private ActaEntrega? _acta;
+    private List<EncuestaCliente> _encuestas = [];
+
+    protected override async Task CargarAsync()
+    {
+        _i = await App.InicioAsync(ObraId);
+        _acta = await Postventa.ActaAsync(ObraId, paraCliente: true);
+        _encuestas = await Postventa.EncuestasAsync(ObraId, soloPendientes: true);
+    }
+}

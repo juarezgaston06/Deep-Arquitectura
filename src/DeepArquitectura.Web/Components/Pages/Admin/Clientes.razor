@@ -1,0 +1,65 @@
+@page "/admin/clientes"
+@rendermode InteractiveServer
+
+<PageTitle>Clientes | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Clientes</h1>
+        <p>@_clientes.Count cliente(s)</p>
+    </div>
+    <a class="btn" href="/admin/clientes/nuevo">+ Nuevo cliente</a>
+</div>
+
+<div class="toolbar">
+    <input placeholder="Buscar por nombre, email, teléfono o localidad…" @bind="_busqueda" @bind:event="oninput" @bind:after="CargarAsync" />
+</div>
+
+<div class="card">
+    @if (_clientes.Count == 0)
+    {
+        <p class="empty">No hay clientes cargados.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Nombre</th><th>Contacto</th><th class="hide-mobile">Localidad</th><th>Obras</th><th class="hide-mobile">Origen</th></tr></thead>
+            <tbody>
+                @foreach (var c in _clientes)
+                {
+                    <tr>
+                        <td><a href="/admin/clientes/@c.Id"><strong>@c.Nombre</strong></a></td>
+                        <td>@c.Telefono<br /><span class="muted">@c.Email</span></td>
+                        <td class="hide-mobile">@c.Localidad</td>
+                        <td>@c.Obras</td>
+                        <td class="hide-mobile">@c.Origen</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private record Fila(int Id, string Nombre, string? Email, string? Telefono, string? Localidad, int Obras, OrigenCliente Origen);
+
+    private string _busqueda = "";
+    private List<Fila> _clientes = [];
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var q = db.Clientes.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(_busqueda))
+        {
+            var t = _busqueda.Trim();
+            q = q.Where(c => c.Nombre.Contains(t) || (c.Email != null && c.Email.Contains(t))
+                || (c.Telefono != null && c.Telefono.Contains(t)) || (c.Localidad != null && c.Localidad.Contains(t)));
+        }
+        _clientes = await q.OrderBy(c => c.Nombre)
+            .Select(c => new Fila(c.Id, c.Nombre, c.Email, c.Telefono, c.Localidad, c.Obras.Count, c.Origen))
+            .Take(300).ToListAsync();
+    }
+}

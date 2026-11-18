@@ -1,0 +1,104 @@
+@page "/mi-obra/aprobaciones/{Id:int}"
+@inherits PaginaCliente
+@inject AppCliente App
+
+<PageTitle>@(_a?.Titulo ?? "Aprobación") | Mi obra</PageTitle>
+
+<a class="volver" href="/mi-obra/aprobaciones">‹ Aprobaciones</a>
+
+@if (_a is not { } a)
+{
+    <p class="vacio">Esta consulta ya no está disponible.</p>
+}
+else
+{
+    <h1>@a.Titulo</h1>
+    @if (a.FechaLimite is DateOnly lim && a.Estado == EstadoAprobacion.Pendiente)
+    {
+        <p class="suave">Necesitamos la respuesta antes del @Textos.Fecha(lim).</p>
+    }
+
+    <section class="tarjeta">
+        @if (a.Descripcion is not null) { <p class="texto-largo">@a.Descripcion</p> }
+        @if (a.Monto is decimal monto)
+        {
+            <div class="datos"><div><span>Costo adicional</span><strong>@Textos.Moneda(monto)</strong></div></div>
+        }
+        @if (a.Documento is { } d)
+        {
+            @if (d.ContentType.StartsWith("image/"))
+            {
+                <a href="/mi-obra/documentos/@d.Id" target="_blank"><img class="adjunto" src="/mi-obra/documentos/@d.Id" alt="@d.Titulo" /></a>
+            }
+            else
+            {
+                <a class="doc" href="/mi-obra/documentos/@d.Id" target="_blank"><span class="doc-tipo">PDF</span><span><strong>@d.Titulo</strong><span class="suave chico">Ver adjunto</span></span></a>
+            }
+        }
+    </section>
+
+    @if (a.Estado != EstadoAprobacion.Pendiente)
+    {
+        <div class="aviso @(a.Estado == EstadoAprobacion.Aprobada ? "aviso-ok" : "aviso-info")">
+            <strong>@(a.Estado == EstadoAprobacion.Aprobada ? "Aprobada" : "No aprobada")@(a.OpcionElegida is null ? "" : $": {a.OpcionElegida}")</strong><br />
+            @a.RespondidoPor · @Textos.Fecha(a.RespondidoEn!.Value)
+            @if (a.Comentario is not null) { <p>«@a.Comentario»</p> }
+        </div>
+        <p class="suave chico">¿Querés cambiar algo? Escribinos desde <a href="/mi-obra/mensajes">Mensajes</a>.</p>
+    }
+    else
+    {
+        @if (_error is not null) { <div class="aviso aviso-error" role="alert">@_error</div> }
+        <EditForm Model="Respuesta" FormName="responder" OnSubmit="ResponderAsync" class="tarjeta" method="post">
+            @if (a.ListaOpciones.Count > 0)
+            {
+                <fieldset class="opciones">
+                    <legend>Elegí una opción</legend>
+                    <InputRadioGroup @bind-Value="Respuesta.Opcion">
+                        @foreach (var o in a.ListaOpciones)
+                        {
+                            <label class="opcion"><InputRadio Value="o" /> <span>@o</span></label>
+                        }
+                    </InputRadioGroup>
+                </fieldset>
+            }
+            <label for="comentario">Comentario (obligatorio si no aprobás)</label>
+            <InputTextArea id="comentario" @bind-Value="Respuesta.Comentario" rows="3" maxlength="2000" />
+            <label for="nombre">Tu nombre (queda como constancia)</label>
+            <InputText id="nombre" @bind-Value="Respuesta.Nombre" maxlength="100" autocomplete="name" data-recordar="nombre" required />
+            <div class="botones">
+                <button type="submit" name="Respuesta.Decision" value="si" class="boton">@(a.ListaOpciones.Count > 0 ? "Confirmar elección" : "Apruebo")</button>
+                <button type="submit" name="Respuesta.Decision" value="no" class="boton boton-sec">No apruebo</button>
+            </div>
+            <p class="suave chico">Una vez enviada, la respuesta no se puede cambiar desde la app.</p>
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [SupplyParameterFromForm(FormName = "responder")] private Formulario? Respuesta { get; set; }
+    private AprobacionCliente? _a;
+    private string? _error;
+
+    public sealed class Formulario
+    {
+        public string? Decision { get; set; }
+        public string? Opcion { get; set; }
+        public string? Comentario { get; set; }
+        public string? Nombre { get; set; }
+    }
+
+    protected override async Task CargarAsync()
+    {
+        Respuesta ??= new();
+        _a = (await App.AprobacionesAsync(ObraId)).FirstOrDefault(x => x.Id == Id);
+    }
+
+    private async Task ResponderAsync()
+    {
+        if (_a is null) return;
+        _error = await App.ResponderAsync(ObraId, Id, Respuesta!.Decision == "si", Respuesta.Opcion, Respuesta.Comentario, Respuesta.Nombre, Ip);
+        if (_error is null) Nav.NavigateTo($"/mi-obra/aprobaciones/{Id}");
+    }
+}

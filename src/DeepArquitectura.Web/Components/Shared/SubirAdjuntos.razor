@@ -1,0 +1,30 @@
+@* Elige fotos o PDF (desde el celular abre la cámara) y los entrega al padre para guardarlos. *@
+<div class="subir-adjuntos">
+    <label class="btn btn-sm btn-outline" style="cursor:pointer">
+        @Texto
+        <InputFile OnChange="Elegir" multiple accept="@Adjuntos.Acepta" style="display:none" />
+    </label>
+    @if (_subiendo) { <span class="muted"> Subiendo…</span> }
+    @if (_error is not null) { <span class="error"> @_error</span> }
+</div>
+
+@code {
+    [Parameter] public string Texto { get; set; } = "Agregar fotos";
+    /// <summary>Recibe los archivos; devuelve un error o null.</summary>
+    [Parameter, EditorRequired] public Func<IReadOnlyCollection<Adjuntos.Archivo>, Task<string?>> OnSubir { get; set; } = null!;
+
+    private bool _subiendo;
+    private string? _error;
+
+    private async Task Elegir(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        if (e.FileCount > Adjuntos.MaximoPorEnvio) { _error = $"Máximo {Adjuntos.MaximoPorEnvio} por vez."; return; }
+        var archivos = e.GetMultipleFiles(Adjuntos.MaximoPorEnvio)
+            .Select(f => new Adjuntos.Archivo(f.Name, f.Size, () => f.OpenReadStream(Adjuntos.TamanoMaximo))).ToList();
+        _subiendo = true;
+        try { _error = await OnSubir(archivos); }
+        catch (Exception ex) { _error = "No se pudo subir: " + ex.Message; }
+        finally { _subiendo = false; }
+    }
+}

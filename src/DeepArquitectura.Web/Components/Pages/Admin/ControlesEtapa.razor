@@ -1,0 +1,125 @@
+@page "/admin/obras/{Id:int}/controles"
+@rendermode InteractiveServer
+@inject ControlesObra Controles
+
+<PageTitle>Controles por etapa | Deep Arquitectura</PageTitle>
+
+@if (_obra is null)
+{
+    <p class="muted">Cargando…</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>Controles por etapa</h1>
+            <p><a href="/admin/obras/@Id">@_obra.Codigo · @_obra.Nombre</a> · lo que hay que verificar (con foto) antes de seguir o de tapar. La cuadrilla los ve en la app cuando la etapa está en curso.</p>
+        </div>
+    </div>
+
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+
+    @foreach (var e in _obra.Etapas.OrderBy(e => e.Orden))
+    {
+        var controles = _estados.Where(c => c.EtapaId == e.Id).ToList();
+        <div class="card">
+            <h2>@e.Orden. @e.Nombre <span class="@Textos.ClaseEstado(e.Estado)">@Textos.Etiqueta(e.Estado)</span></h2>
+            @if (controles.Count == 0)
+            {
+                <p class="muted">Sin controles.</p>
+            }
+            else
+            {
+                <table>
+                    <tbody>
+                        @foreach (var c in controles)
+                        {
+                            <tr>
+                                <td>
+                                    @c.Texto @if (c.RequiereFoto) { <span class="muted">📷</span> }
+                                    @if (c.Nota is not null) { <div class="muted">@c.Nota</div> }
+                                </td>
+                                <td>
+                                    @switch (c.Resultado)
+                                    {
+                                        case ResultadoControl.Ok: <span class="chip chip-ok">OK</span> break;
+                                        case ResultadoControl.Observado: <span class="chip chip-alerta">observado</span> break;
+                                        default: <span class="chip">sin hacer</span> break;
+                                    }
+                                    @if (c.Fecha is DateTime f) { <div class="muted" style="font-size:.8rem">@c.Quien · @Textos.Fecha(f)</div> }
+                                </td>
+                                <td>
+                                    @if (c.RegistroId is int rid && _medios.TryGetValue(rid, out var ms)) { <MediosGaleria Lista="ms" /> }
+                                </td>
+                                <td class="acciones">
+                                    @if (c.Resultado is null) { <button class="btn-link btn-danger" @onclick="() => Borrar(c.Id)">Quitar</button> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            <div class="toolbar" style="margin:.75rem 0 0">
+                <select @bind="_plantilla[e.Id]">
+                    <option value="">Cargar plantilla…</option>
+                    @foreach (var p in ControlesObra.Plantillas.Keys) { <option value="@p">@p@(p == ControlesObra.Sugerida(e.Nombre) ? " (sugerida)" : "")</option> }
+                </select>
+                <button class="btn btn-sm btn-outline" @onclick="() => CargarPlantilla(e.Id)" disabled="@string.IsNullOrEmpty(_plantilla.GetValueOrDefault(e.Id))">Agregar</button>
+                <input placeholder="Otro control…" maxlength="300" @bind="_nuevo[e.Id]" />
+                <label style="display:flex;gap:.3rem;align-items:center;font-size:.85rem"><input type="checkbox" @bind="_foto[e.Id]" /> con foto</label>
+                <button class="btn btn-sm" @onclick="() => Agregar(e.Id)" disabled="@string.IsNullOrWhiteSpace(_nuevo.GetValueOrDefault(e.Id))">Agregar</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Obra? _obra;
+    private List<ControlesObra.EstadoControl> _estados = [];
+    private Dictionary<int, List<MedioRegistro>> _medios = [];
+    private readonly Dictionary<int, string?> _plantilla = [], _nuevo = [];
+    private readonly Dictionary<int, bool> _foto = [];
+    private string? _error;
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _obra = await db.Obras.AsNoTracking().Include(o => o.Etapas).SingleOrDefaultAsync(o => o.Id == Id);
+        if (_obra is null) return;
+        _estados = await Controles.DeObraAsync(Id);
+        foreach (var e in _obra.Etapas)
+        {
+            // Sugerir la plantilla solo si la etapa todavía no tiene controles.
+            _plantilla.TryAdd(e.Id, ControlesObra.Sugerida(e.Nombre) is { } s && !_estados.Any(c => c.EtapaId == e.Id) ? s : null);
+            _nuevo.TryAdd(e.Id, null);
+            _foto.TryAdd(e.Id, true);
+        }
+        var ids = _estados.Where(c => c.RegistroId != null).Select(c => c.RegistroId!.Value).ToList();
+        _medios = (await db.Medios.AsNoTracking().Where(m => ids.Contains(m.RegistroAvanceId)).ToListAsync())
+            .GroupBy(m => m.RegistroAvanceId).ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    private async Task CargarPlantilla(int etapaId)
+    {
+        _error = await Controles.AgregarPlantillaAsync(etapaId, _plantilla[etapaId] ?? "");
+        _plantilla[etapaId] = null;
+        await CargarAsync();
+    }
+
+    private async Task Agregar(int etapaId)
+    {
+        _error = await Controles.AgregarAsync(etapaId, _nuevo[etapaId] ?? "", _foto[etapaId]);
+        if (_error is null) _nuevo[etapaId] = null;
+        await CargarAsync();
+    }
+
+    private async Task Borrar(int controlId)
+    {
+        _error = await Controles.BorrarAsync(controlId);
+        await CargarAsync();
+    }
+}

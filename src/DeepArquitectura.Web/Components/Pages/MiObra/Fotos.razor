@@ -1,0 +1,79 @@
+@page "/mi-obra/fotos"
+@inherits PaginaCliente
+@inject PortalCliente Portal
+
+<PageTitle>Fotos | Mi obra</PageTitle>
+
+<h1>Fotos y videos</h1>
+
+@if (_v is { } v)
+{
+    @foreach (var p in v.Puntos)
+    {
+        <section class="tarjeta">
+            <h2>@p.Nombre</h2>
+            @if (p.Fotos.Count >= 2)
+            {
+                <div class="antes-ahora">
+                    @foreach (var (f, etiqueta) in new[] { (p.Fotos[0], "Al empezar"), (p.Fotos[^1], "Ahora") })
+                    {
+                        <figure>
+                            <a href="@Medio(f.MedioId)" target="_blank"><img src="@Medio(f.MedioId)" alt="@p.Nombre: @etiqueta" loading="lazy" /></a>
+                            <figcaption>@etiqueta · @Textos.Dia(f.Fecha)</figcaption>
+                        </figure>
+                    }
+                </div>
+            }
+            <div class="galeria">
+                @foreach (var f in p.Fotos.AsEnumerable().Reverse().Take(24))
+                {
+                    <a href="@Medio(f.MedioId)" target="_blank" title="@Textos.Dia(f.Fecha)"><img src="@Medio(f.MedioId)" alt="@p.Nombre @Textos.Dia(f.Fecha)" loading="lazy" /></a>
+                }
+            </div>
+        </section>
+    }
+
+    @if (v.Bitacora.Count > 0)
+    {
+        <h2>Novedades</h2>
+        <ul class="linea-tiempo">
+            @foreach (var e in v.Bitacora)
+            {
+                <li>
+                    <span class="suave chico">@Textos.Dia(e.Fecha)@(e.Etapa is null ? "" : $" · {e.Etapa}")</span>
+                    <strong>@e.Titulo</strong>
+                    @if (e.Descripcion is not null) { <p>@e.Descripcion</p> }
+                    @if (e.Medios.Count > 0)
+                    {
+                        <div class="galeria">
+                            @foreach (var m in e.Medios)
+                            {
+                                @if (m.EsVideo)
+                                {
+                                    <video src="@Medio(m.MedioId)" controls preload="metadata" playsinline></video>
+                                }
+                                else
+                                {
+                                    <a href="@Medio(m.MedioId)" target="_blank"><img src="@Medio(m.MedioId)" alt="@e.Titulo" loading="lazy" /></a>
+                                }
+                            }
+                        </div>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+    @if (v.Puntos.Count == 0 && v.Bitacora.Count == 0)
+    {
+        <p class="vacio">Todavía no hay fotos para mostrar. Las vamos a ir subiendo a medida que avance la obra.</p>
+    }
+}
+
+@code {
+    private PortalCliente.Vista? _v;
+
+    protected override async Task CargarAsync() => _v = await Portal.VistaObraAsync(ObraId);
+
+    private static string Medio(int id) => $"/mi-obra/medios/{id}";
+}

@@ -1,0 +1,66 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Dancing+Script:wght@600&display=swap"
+          rel="stylesheet">
+    <link rel="icon" type="image/png" href="@Assets["img/logo.png"]">
+    @* La hoja base va acÃ¡ y no en <HeadContent> del layout: si una pÃ¡gina define su propio
+       <HeadContent>, Blazor solo renderiza el Ãºltimo y el layout perdÃ­a su CSS. *@
+    @if (EsCliente)
+    {
+        @* App del cliente: web instalable (PWA). HTML estÃ¡tico, sin Blazor: liviana y rÃ¡pida en datos mÃ³viles. *@
+        <link rel="stylesheet" href="@Assets["css/cliente.css"]">
+        <link rel="manifest" href="/mi-obra/manifest.webmanifest">
+        <meta name="theme-color" content="#4A3728">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <meta name="apple-mobile-web-app-title" content="Mi obra">
+        <link rel="apple-touch-icon" href="/img/app/apple-touch-icon.png">
+        <meta name="robots" content="noindex, nofollow">
+    }
+    else if (EsAdmin || EsPortal)
+    {
+        <link rel="stylesheet" href="@Assets["css/admin.css"]">
+        <meta name="robots" content="noindex, nofollow">
+    }
+    else
+    {
+        <link rel="stylesheet" href="@Assets["css/style.css"]">
+    }
+    <ImportMap />
+    <HeadOutlet />
+</head>
+
+<body>
+    <Routes />
+    @if (EsAdmin)
+    {
+        @* Blazor solo se carga en el panel: el sitio pÃºblico queda como HTML puro (mÃ¡s liviano y mejor SEO). *@
+        <script src="@Assets["_framework/blazor.web.js"]"></script>
+        <script src="@Assets["js/admin.js"]"></script>
+    }
+    else if (EsCliente)
+    {
+        <script src="/mi-obra/app.js" defer></script>
+    }
+</body>
+
+</html>
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private bool EsAdmin => HttpContext?.Request.Path.StartsWithSegments("/admin") ?? false;
+
+    /// <summary>Portal del cliente: estilos del panel y sin indexar, pero HTML estÃ¡tico (sin Blazor).</summary>
+    private bool EsCliente => HttpContext?.Request.Path.StartsWithSegments("/mi-obra") ?? false;
+
+    private bool EsPortal => HttpContext?.Request.Path.StartsWithSegments("/seguimiento") ?? false;
+}

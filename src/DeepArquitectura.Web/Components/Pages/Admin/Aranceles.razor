@@ -1,0 +1,71 @@
+@page "/admin/aranceles"
+@rendermode InteractiveServer
+
+<PageTitle>Aranceles | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Escalas arancelarias</h1>
+        <p>Cada semestre el Colegio publica una tabla nueva: cargala como versión nueva. Los presupuestos ya emitidos no cambian.</p>
+    </div>
+    @if (_lista.Count > 0)
+    {
+        <a class="btn" href="/admin/aranceles/nueva?desde=@_lista[0].Id">Nueva versión (a partir de la última)</a>
+    }
+</div>
+
+@if (_vigenteId is null && _lista.Count > 0)
+{
+    <div class="alert alert-error">Ninguna versión cubre la fecha de hoy (@Textos.Fecha(_hoy)). Se usa la más reciente hasta que cargues la nueva.</div>
+}
+
+<div class="card">
+    @if (_lista.Count == 0)
+    {
+        <p class="empty">No hay escalas cargadas.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Nombre</th><th>Vigencia</th><th style="text-align:right">Valor básico</th><th style="text-align:right">Presupuestos</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var a in _lista)
+                {
+                    <tr>
+                        <td>
+                            <a href="/admin/aranceles/@a.Id">@a.Nombre</a>
+                            @if (a.Id == _vigenteId) { <span class="chip chip-ok">vigente</span> }
+                            else if (a.VigenteHasta < _hoy) { <span class="chip chip-apagado">vencida</span> }
+                            else if (a.VigenteDesde > _hoy) { <span class="chip chip-activo">próxima</span> }
+                        </td>
+                        <td>@Textos.Fecha(a.VigenteDesde) al @Textos.Fecha(a.VigenteHasta)</td>
+                        <td style="text-align:right">@Textos.Moneda(a.ValorBasico)</td>
+                        <td style="text-align:right">@a.Usos</td>
+                        <td class="acciones">
+                            <a class="btn-link" href="/admin/aranceles/@a.Id">Ver / editar</a>
+                            <a class="btn-link" href="/admin/aranceles/nueva?desde=@a.Id">Duplicar</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private record Fila(int Id, string Nombre, DateOnly VigenteDesde, DateOnly VigenteHasta, decimal ValorBasico, int Usos);
+    private List<Fila> _lista = [];
+    private int? _vigenteId;
+    private readonly DateOnly _hoy = Textos.HoyLocal();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _lista = await db.Aranceles.AsNoTracking()
+            .OrderByDescending(a => a.VigenteDesde).ThenByDescending(a => a.Id)
+            .Select(a => new Fila(a.Id, a.Nombre, a.VigenteDesde, a.VigenteHasta, a.ValorBasico,
+                db.Presupuestos.Count(p => p.ArancelVersionId == a.Id)))
+            .ToListAsync();
+        _vigenteId = _lista.FirstOrDefault(a => a.VigenteDesde <= _hoy && _hoy <= a.VigenteHasta)?.Id;
+    }
+}

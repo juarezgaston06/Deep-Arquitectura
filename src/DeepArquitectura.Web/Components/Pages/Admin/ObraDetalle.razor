@@ -1,0 +1,823 @@
+@page "/admin/obras/{Id:int}"
+@rendermode InteractiveServer
+@inject EstudioService Estudio
+@inject CampoService Campo
+@inject ControlesObra Controles
+@inject AvanceObra Avance
+@inject ClimaService Clima
+@inject PortalCliente Portal
+
+<PageTitle>@(_obra?.Nombre ?? "Obra") | Deep Arquitectura</PageTitle>
+
+@if (_obra is null)
+{
+    <p class="muted">@(_noEncontrada ? "Obra no encontrada." : "Cargando…")</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>@_obra.Nombre</h1>
+            <p>
+                @_obra.Codigo · @Textos.Etiqueta(_obra.Servicio) ·
+                <a href="/admin/clientes/@_obra.ClienteId">@_obra.Cliente.Nombre</a>
+            </p>
+            <p>
+                Capataz:
+                @if (_capataces.Count == 0)
+                {
+                    <a href="/admin/capataces">sin asignar — asignar</a>
+                }
+                else
+                {
+                    @foreach (var c in _capataces)
+                    {
+                        <a href="/admin/capataces/@c.Id" style="margin-right:.5rem">@c.Nombre@(c.Activo ? "" : " (desactivado)")</a>
+                    }
+                }
+            </p>
+        </div>
+        <div style="display:flex;gap:.75rem;align-items:center">
+            <span class="@Textos.ClaseEstado(_obra.Estado)">@Textos.Etiqueta(_obra.Estado)</span>
+            <a class="btn btn-outline" href="/admin/redes?obraId=@_obra.Id">Crear contenido para redes</a>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <a class="btn btn-sm btn-outline" href="/admin/obras/@_obra.Id/libro">📖 Libro de obra@(_notasSinResponder > 0 ? $" ({_notasSinResponder} nota/s)" : "")</a>
+        <a class="btn btn-sm btn-outline" href="/admin/obras/@_obra.Id/controles">✔ Controles por etapa@(_controlesObservados > 0 ? $" ({_controlesObservados} observado/s)" : "")</a>
+        <a class="btn btn-sm btn-outline" href="/admin/obras/@_obra.Id/fotos-fijas">📷 Fotos fijas</a>
+        <a class="btn btn-sm btn-outline" href="/admin/obras/@_obra.Id/certificados">💲 Certificados</a>
+        <a class="btn btn-sm btn-outline" href="/admin/campo?tab=validar&obraId=@_obra.Id">Validar avances@(_porValidar > 0 ? $" ({_porValidar})" : "")</a>
+    </div>
+
+    @if (_mensaje is not null)
+    {
+        <div class="alert alert-ok">@_mensaje</div>
+    }
+    @if (_aviso is not null)
+    {
+        <div class="alert alert-error">@_aviso</div>
+    }
+
+    <div class="kpis">
+        <div class="kpi"><div class="valor">@_obra.PorcentajeAvance%</div><div class="label">Avance</div></div>
+        <div class="kpi"><div class="valor">@Textos.Moneda(_obra.MontoPresupuesto)</div><div class="label">Presupuesto</div></div>
+        <div class="kpi"><div class="valor">@Textos.Moneda(TotalCobrado)</div><div class="label">Cobrado</div></div>
+        <div class="kpi"><div class="valor">@Textos.Moneda(_obra.MontoPresupuesto is null ? null : _obra.MontoPresupuesto - TotalCobrado)</div><div class="label">Saldo</div></div>
+    </div>
+
+    <div class="grid-2">
+        @* ---- Etapas ---- *@
+        <div class="card">
+            <h2>Etapas</h2>
+            <ul class="etapas">
+                @foreach (var e in _obra.Etapas.OrderBy(e => e.Orden))
+                {
+                    <li>
+                        <span class="orden">@e.Orden</span>
+                        <span class="nombre">
+                            @e.Nombre
+                            @if (e.FechaFin is not null) { <span class="muted"> · terminada @Textos.Fecha(e.FechaFin)</span> }
+                            else if (e.FechaInicio is not null) { <span class="muted"> · desde @Textos.Fecha(e.FechaInicio)</span> }
+                            @if (_controlesPorEtapa.TryGetValue(e.Id, out var ce))
+                            {
+                                <a href="/admin/obras/@_obra.Id/controles" class="@(ce.Observados > 0 ? "chip chip-alerta" : ce.Ok == ce.Total ? "chip chip-ok" : "chip")" style="margin-left:.4rem">
+                                    controles @ce.Ok/@ce.Total@(ce.Observados > 0 ? $" · {ce.Observados} obs." : "")
+                                </a>
+                            }
+                        </span>
+                        <select value="@e.Estado" @onchange="ev => CambiarEtapa(e.Id, ev.Value)">
+                            @foreach (var s in Enum.GetValues<EstadoEtapa>())
+                            {
+                                <option value="@s">@Textos.Etiqueta(s)</option>
+                            }
+                        </select>
+                    </li>
+                }
+            </ul>
+            <div class="toolbar" style="margin-top:.75rem;margin-bottom:0">
+                <input placeholder="Agregar etapa…" @bind="_nuevaEtapa" maxlength="150" />
+                <button class="btn btn-sm btn-outline" @onclick="AgregarEtapa" disabled="@string.IsNullOrWhiteSpace(_nuevaEtapa)">Agregar</button>
+            </div>
+        </div>
+
+        @* ---- Bitácora ---- *@
+        <div class="card">
+            <h2>Bitácora de obra</h2>
+            <div class="form-grid" style="margin-bottom:1rem">
+                <div class="field full">
+                    <input placeholder="¿Qué pasó hoy en la obra?" @bind="_registro.Titulo" maxlength="200" />
+                </div>
+                <div class="field full">
+                    <textarea rows="2" placeholder="Detalle (opcional)" @bind="_registro.Descripcion" maxlength="4000"></textarea>
+                </div>
+                <div class="field">
+                    <select @bind="_registro.EtapaObraId">
+                        <option value="">Sin etapa</option>
+                        @foreach (var e in _obra.Etapas.OrderBy(e => e.Orden))
+                        {
+                            <option value="@e.Id">@e.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <label style="display:flex;gap:.5rem;align-items:center;font-size:.9rem">
+                    <input type="checkbox" @bind="_registro.UsableEnRedes" /> Sirve para redes
+                </label>
+            </div>
+            <button class="btn btn-sm" @onclick="AgregarRegistro" disabled="@string.IsNullOrWhiteSpace(_registro.Titulo)">Registrar novedad</button>
+
+            <ul class="timeline" style="margin-top:1rem">
+                @foreach (var r in _obra.Registros.OrderByDescending(r => r.Fecha))
+                {
+                    <li>
+                        <div class="fecha">@Textos.Fecha(r.Fecha)@(r.Etapa is null ? "" : $" · {r.Etapa.Nombre}")</div>
+                        <strong>@r.Titulo</strong>
+                        @if (r.UsableEnRedes) { <span class="chip">apta redes</span> }
+                        @if (r.Albanil is not null) { <span class="chip chip-activo" title="Cuadrilla de @r.Capataz?.Nombre">🧱 @r.Albanil.Nombre</span> }
+                        else if (r.Capataz is not null) { <span class="chip chip-activo">📱 @r.Capataz.Nombre</span> }
+                        @if (r.Validacion is EstadoValidacion v)
+                        {
+                            <span class="@(v switch { EstadoValidacion.Pendiente => "chip chip-alerta", EstadoValidacion.Rechazado => "chip chip-apagado", _ => "chip chip-ok" })"
+                                  title="@r.MotivoValidacion">@(v == EstadoValidacion.Pendiente ? "a validar" : Textos.Etiqueta(v).ToLowerInvariant())@(r.CantidadInformada is { } ci ? $" (informó {Textos.Numero(ci)})" : "")</span>
+                        }
+                        @if (r.PuntoFotoId is not null) { <span class="chip">foto fija</span> }
+                        @if (!string.IsNullOrWhiteSpace(r.Descripcion)) { <div>@r.Descripcion</div> }
+                        <MediosGaleria Lista="r.Medios" />
+                        @if (_obra.TokenPortal is not null)
+                        {
+                            <label style="display:inline-flex;gap:.3rem;align-items:center;font-size:.8rem;margin-right:.75rem">
+                                <input type="checkbox" checked="@r.VisibleCliente" @onchange="ev => VisibleCliente(r.Id, ev.Value is true)" /> visible para el cliente
+                            </label>
+                        }
+                        @if (!r.UsableEnRedes && r.Medios.Count > 0)
+                        {
+                            <button class="btn-link" style="padding:0;font-size:.8rem" @onclick="() => MarcarParaRedes(r.Id)">Marcar apta para redes</button>
+                        }
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        @* ---- Tareas de la cuadrilla ---- *@
+        <div class="card">
+            <h2>Tareas de la cuadrilla</h2>
+            <p class="muted" style="margin-bottom:.75rem">Las ven los albañiles en su app y cargan el avance con fotos y videos. Con unidad se mide en cantidad (ej. 40 m²); sin unidad, en %.</p>
+            @if (_tareas.Count == 0)
+            {
+                <p class="empty">Todavía no hay tareas.</p>
+            }
+            else
+            {
+                <table>
+                    <thead><tr><th>Tarea</th><th>Albañil</th><th>Avance</th><th>Estado</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var t in _tareas.Where(t => _verCanceladas || t.Estado != EstadoTarea.Cancelada))
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@t.Titulo</strong>
+                                    @if (CalculoTareas.Atrasada(t, Textos.HoyLocal())) { <span class="chip chip-alerta">atrasada</span> }
+                                    <div class="muted">
+                                        @(t.Etapa?.Nombre ?? "Sin etapa")@(t.Rubro is null ? "" : $" · {t.Rubro}")
+                                        @(t.FechaInicioPlan is null && t.FechaLimite is null ? "" : $" · plan {Textos.Fecha(t.FechaInicioPlan)} → {Textos.Fecha(t.FechaLimite)}")
+                                        @(t.Peso is null ? "" : $" · peso {Textos.Numero(t.Peso.Value)}")
+                                    </div>
+                                </td>
+                                <td>@(t.Albanil?.Nombre ?? (t.Oficio is null ? "Cualquiera" : $"Cualquier {t.Oficio.ToLowerInvariant()}"))</td>
+                                <td style="min-width:130px">
+                                    <div class="progress" title="Aprobado @t.PorcentajeAprobado% · informado @t.Porcentaje%"><div style="width:@(t.PorcentajeAprobado)%"></div></div>
+                                    <span class="muted" style="font-size:.8rem">
+                                        @(t.Unidad is null ? $"{t.PorcentajeAprobado}% aprobado" : $"{Textos.Numero(t.CantidadAprobada)} / {Textos.Numero(t.CantidadObjetivo ?? 0)} {t.Unidad} aprob.")
+                                        @if (t.Porcentaje != t.PorcentajeAprobado) { <br />@($"informado: {(t.Unidad is null ? $"{t.Porcentaje}%" : $"{Textos.Numero(t.CantidadHecha)} {t.Unidad}")}") }
+                                        @if (_horasPorTarea.TryGetValue(t.Id, out var hs))
+                                        {
+                                            <br />@($"{Textos.Numero(hs)} h")
+                                            @if (AvanceObra.RendimientoTarea(t, hs) is decimal rend) { @($" · rinde {Textos.Numero(rend)} {t.Unidad}/h") }
+                                        }
+                                    </span>
+                                </td>
+                                <td>
+                                    <select value="@t.Estado" @onchange="ev => CambiarEstadoTarea(t.Id, ev.Value)">
+                                        @foreach (var s in Enum.GetValues<EstadoTarea>()) { <option value="@s">@Textos.Etiqueta(s)</option> }
+                                    </select>
+                                </td>
+                                <td class="acciones"><button class="btn-link" @onclick="() => EditarTarea(t)">Editar</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (_tareas.Any(t => t.Estado == EstadoTarea.Cancelada))
+                {
+                    <label style="display:flex;gap:.4rem;align-items:center;font-size:.85rem;margin-top:.5rem">
+                        <input type="checkbox" @bind="_verCanceladas" /> Ver canceladas
+                    </label>
+                }
+            }
+
+            <h3 style="margin-top:1rem">@(_tareaEditando is null ? "Nueva tarea" : "Editar tarea")</h3>
+            @if (_errorTarea is not null) { <div class="alert alert-error">@_errorTarea</div> }
+            <div class="form-grid">
+                <div class="field full"><input placeholder="Ej. Mampostería de ladrillo hueco PB" @bind="_tarea.Titulo" maxlength="200" /></div>
+                <div class="field">
+                    <label>Etapa</label>
+                    <select @bind="_tarea.EtapaObraId">
+                        <option value="">Sin etapa</option>
+                        @foreach (var e in _obra.Etapas.OrderBy(e => e.Orden)) { <option value="@e.Id">@e.Nombre</option> }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Albañil</label>
+                    <select @bind="_tarea.AlbanilId">
+                        <option value="">Cualquiera de la cuadrilla</option>
+                        @foreach (var a in _cuadrilla) { <option value="@a.Id">@a.Nombre</option> }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Unidad (vacío = %)</label>
+                    <input @bind="_tarea.Unidad" maxlength="20" list="unidades-tarea" placeholder="m², m³, ml, u…" />
+                    <datalist id="unidades-tarea">@foreach (var u in CampoService.UnidadesTarea) { <option value="@u" /> }</datalist>
+                </div>
+                <div class="field">
+                    <label>Cantidad a hacer</label>
+                    <input type="number" step="0.01" min="0" @bind="_tarea.CantidadObjetivo" disabled="@string.IsNullOrWhiteSpace(_tarea.Unidad)" />
+                </div>
+                <div class="field"><label>Inicio previsto</label><input type="date" @bind="_tarea.FechaInicioPlan" /></div>
+                <div class="field"><label>Fin previsto</label><input type="date" @bind="_tarea.FechaLimite" /></div>
+                <div class="field">
+                    <label>Rubro (para rendimientos)</label>
+                    <input @bind="_tarea.Rubro" maxlength="80" list="rubros-tarea" placeholder="Mampostería de ladrillo hueco…" />
+                    <datalist id="rubros-tarea">@foreach (var r in CampoService.Rubros) { <option value="@r" /> }</datalist>
+                </div>
+                <div class="field">
+                    <label>Peso en la obra (opcional)</label>
+                    <input type="number" step="0.1" min="0" @bind="_tarea.Peso" placeholder="vacío = todas iguales" />
+                </div>
+                @if (_tarea.AlbanilId is null)
+                {
+                    <div class="field">
+                        <label>Solo para el oficio</label>
+                        <select @bind="_tarea.Oficio">
+                            <option value="">Todos</option>
+                            @foreach (var o in DeepArquitectura.Contracts.ValoresAlbanil.Oficios) { <option value="@o">@o</option> }
+                        </select>
+                    </div>
+                }
+                <div class="field full"><textarea rows="2" placeholder="Indicaciones (opcional)" @bind="_tarea.Descripcion" maxlength="2000"></textarea></div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-sm" @onclick="GuardarTarea" disabled="@string.IsNullOrWhiteSpace(_tarea.Titulo)">@(_tareaEditando is null ? "Agregar tarea" : "Guardar cambios")</button>
+                @if (_tareaEditando is not null) { <button class="btn-link" @onclick="NuevaTarea">Cancelar</button> }
+            </div>
+        </div>
+
+        @* ---- Cuadrilla ---- *@
+        <div class="card">
+            <h2>Cuadrilla en la obra</h2>
+            @if (_cuadrilla.Count == 0)
+            {
+                <p class="empty">No hay albañiles asignados. <a href="/admin/albaniles">Asignar desde Albañiles</a>.</p>
+            }
+            else
+            {
+                <table>
+                    <tbody>
+                        @foreach (var a in _cuadrilla)
+                        {
+                            <tr>
+                                <td><a href="/admin/albaniles/@a.Id">@a.Nombre</a>@(a.Oficio is null ? "" : $" · {a.Oficio}")<div class="muted">cuadrilla de @a.Capataz</div></td>
+                                <td>
+                                    @if (a.EntradaHoy is DateTime e) { <span class="chip chip-activo">en obra desde @Textos.AHoraLocal(e).ToString("HH:mm")</span> }
+                                    else if (!a.DelCapataz) { <span class="chip chip-alerta">su capataz no tiene esta obra</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            <div class="quick" style="margin-top:1rem;display:flex;gap:1rem;flex-wrap:wrap">
+                <a href="/admin/campo?tab=pedidos&obraId=@_obra.Id">Pedidos de material pendientes: <strong>@_pedidosPendientes</strong></a>
+                <a href="/admin/campo?tab=problemas&obraId=@_obra.Id">Problemas sin resolver: <strong>@_problemasAbiertos</strong></a>
+                <a href="/admin/campo?tab=asistencia&obraId=@_obra.Id">Asistencia</a>
+                <a href="/admin/campo?tab=partes&obraId=@_obra.Id">Partes diarios</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        @* ---- Plan vs real ---- *@
+        <div class="card">
+            <h2>Avance planificado vs. real</h2>
+            @if (_curva is null || _curva.Puntos.Count == 0)
+            {
+                <p class="empty">Cargá inicio y fin previstos en las tareas para ver la curva (y las atrasadas).</p>
+            }
+            else
+            {
+                <p class="muted">
+                    Hoy: plan <strong>@Textos.Numero(_curva.PlanHoy)%</strong> · real aprobado <strong>@Textos.Numero(_curva.RealHoy)%</strong>
+                    @if (_curva.PlanHoy - _curva.RealHoy >= 10) { <span class="chip chip-alerta">atrasada @Textos.Numero(_curva.PlanHoy - _curva.RealHoy) pts</span> }
+                    @if (_curva.TareasSinPlan > 0) { <span> · @_curva.TareasSinPlan tarea(s) sin fechas no entran</span> }
+                </p>
+                <CurvaAvance Puntos="_curva.Puntos" />
+            }
+            @if (_curva is { Atrasadas.Count: > 0 })
+            {
+                <h3 style="margin-top:.75rem">Atrasadas</h3>
+                <p class="muted" style="font-size:.85rem">Anotá por qué se atrasó cada una (el capataz también lo puede anotar desde su app): así se ve qué es lo que más atrasa las obras.</p>
+                <ul style="margin:0 0 0 1rem">
+                    @foreach (var t in _curva.Atrasadas)
+                    {
+                        <li style="margin-bottom:.4rem">
+                            @t.Titulo — fin previsto @Textos.Fecha(t.FechaLimite), va @t.PorcentajeAprobado% @(t.Albanil is null ? "" : $"({t.Albanil.Nombre})")
+                            <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+                                <select value="@(t.CausaAtraso?.ToString() ?? "")" @onchange="e => CausaAtrasoAsync(t, e.Value?.ToString())">
+                                    <option value="">¿Por qué?</option>
+                                    @foreach (var c in Enum.GetValues<CausaAtraso>()) { <option value="@c">@Textos.Etiqueta(c)</option> }
+                                </select>
+                                @if (t.CausaAtraso is not null)
+                                {
+                                    <input placeholder="Detalle" value="@t.DetalleAtraso" maxlength="500" @onchange="e => DetalleAtrasoAsync(t, e.Value?.ToString())" />
+                                }
+                                else if (_sugerencias.TryGetValue(t.Id, out var s))
+                                {
+                                    <button class="btn-link" @onclick="() => CausaAtrasoAsync(t, s.Causa.ToString(), s.Motivo)">¿@Textos.Etiqueta(s.Causa)? (@s.Motivo)</button>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        @* ---- Clima y portal ---- *@
+        <div class="card">
+            <h2>Clima en la obra</h2>
+            @if (_obra.Latitud is null)
+            {
+                <p class="empty">Cargá la ubicación de la obra (abajo, en «Datos») para traer el clima y controlar las fichadas.</p>
+            }
+            else if (_clima.Count == 0)
+            {
+                <p class="muted">Todavía sin datos. <button class="btn-link" @onclick="ActualizarClima">Traer ahora</button></p>
+            }
+            else
+            {
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                    @foreach (var c in _clima)
+                    {
+                        <div class="kpi" style="min-width:86px;padding:.5rem;@(c.Fecha == Textos.HoyLocal() ? "outline:2px solid #4A3728" : "")" title="@ClimaService.Descripcion(c.CodigoTiempo)">
+                            <div class="label">@c.Fecha.ToString("ddd dd", new System.Globalization.CultureInfo("es-AR"))</div>
+                            <div style="font-size:1.4rem">@ClimaService.Icono(c.CodigoTiempo)</div>
+                            <div style="font-size:.8rem">@($"{c.TempMax:0}° / {c.TempMin:0}°")</div>
+                            <div style="font-size:.8rem;@(c.Desfavorable ? "color:#B23A2A;font-weight:600" : "")">@($"{c.LluviaMm:0.#} mm")</div>
+                        </div>
+                    }
+                </div>
+                <p class="muted" style="font-size:.8rem;margin-top:.4rem">
+                    @_clima.Count(c => c.Fecha < Textos.HoyLocal() && c.Desfavorable) día(s) desfavorable(s) en la última semana ·
+                    <button class="btn-link" style="padding:0" @onclick="ActualizarClima">actualizar</button>
+                </p>
+            }
+
+            <h2 style="margin-top:1.25rem">Portal del cliente</h2>
+            @if (_obra.TokenPortal is null)
+            {
+                <p class="muted">Link privado de solo lectura para que el cliente siga la obra: avance, etapas, curva, fotos fijas y lo que marques como visible en la bitácora. No muestra nombres del personal ni montos.</p>
+                <button class="btn btn-sm" @onclick="ActivarPortal">Crear link</button>
+            }
+            else
+            {
+                var link = $"{Nav.BaseUri}seguimiento/{_obra.TokenPortal}";
+                <p><input readonly value="@link" style="width:100%" onclick="this.select()" /></p>
+                <div class="toolbar" style="margin:0">
+                    <a class="btn btn-sm btn-outline" href="@link" target="_blank">Ver como el cliente</a>
+                    <a class="btn btn-sm btn-outline" target="_blank" href="@($"https://wa.me/?text={Uri.EscapeDataString($"Hola! Acá podés seguir el avance de tu obra {_obra.Nombre}: {link}")}")">Compartir por WhatsApp</a>
+                    <button class="btn-link" @onclick="ActivarPortal">Cambiar link</button>
+                    <button class="btn-link btn-danger" @onclick="ApagarPortal">Apagar</button>
+                </div>
+                <p class="muted" style="font-size:.8rem">Cambiar el link deja sin acceso al anterior. En la bitácora, tildá «visible para el cliente» en lo que quieras mostrar.</p>
+            }
+
+            <h2 style="margin-top:1.25rem">App del cliente</h2>
+            <p class="muted">Código de obra + PIN para que el cliente siga la obra desde el celular, con pagos, planos, mensajes y aprobaciones.</p>
+            <a class="btn btn-sm" href="/admin/obras/@Id/cliente">Acceso, mensajes, aprobaciones y documentos →</a>
+
+            <h2 style="margin-top:1.25rem">Costos, trámites y cierre</h2>
+            <div class="quick">
+                <a class="btn btn-sm btn-outline" href="/admin/obras/@Id/costos">Costos reales y rentabilidad</a>
+                <a class="btn btn-sm btn-outline" href="/admin/obras/@Id/tramites">Trámites e inspecciones</a>
+                <a class="btn btn-sm btn-outline" href="/admin/obras/@Id/cierre">Entrega, garantía y encuestas</a>
+                <a class="btn btn-sm btn-outline" href="/admin/relevamientos/nuevo?obra=@Id">Nuevo relevamiento</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        @* ---- Datos ---- *@
+        <div class="card">
+            <h2>Datos de la obra</h2>
+            <EditForm Model="_obra" OnValidSubmit="GuardarDatos" FormName="obra-datos">
+                <div class="form-grid">
+                    <div class="field full">
+                        <label>Nombre</label>
+                        <InputText @bind-Value="_obra.Nombre" maxlength="200" />
+                    </div>
+                    <div class="field">
+                        <label>Estado</label>
+                        <InputSelect @bind-Value="_obra.Estado">
+                            @foreach (var s in Enum.GetValues<EstadoObra>())
+                            {
+                                <option value="@s">@Textos.Etiqueta(s)</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="field">
+                        <label>Expediente municipal</label>
+                        <InputText @bind-Value="_obra.ExpedienteMunicipal" maxlength="80" />
+                    </div>
+                    <div class="field">
+                        <label>Dirección</label>
+                        <InputText @bind-Value="_obra.Direccion" maxlength="300" />
+                    </div>
+                    <div class="field">
+                        <label>Localidad</label>
+                        <InputText @bind-Value="_obra.Localidad" maxlength="120" />
+                    </div>
+                    <div class="field">
+                        <label>Inicio</label>
+                        <InputDate @bind-Value="_obra.FechaInicio" />
+                    </div>
+                    <div class="field">
+                        <label>Entrega estimada</label>
+                        <InputDate @bind-Value="_obra.FechaEntregaEstimada" />
+                    </div>
+                    <div class="field">
+                        <label>Finalización</label>
+                        <InputDate @bind-Value="_obra.FechaFinalizacion" />
+                    </div>
+                    <div class="field">
+                        <label>Presupuesto ($)</label>
+                        <InputNumber @bind-Value="_obra.MontoPresupuesto" />
+                    </div>
+                    <div class="field">
+                        <label>Latitud</label>
+                        <InputNumber @bind-Value="_obra.Latitud" step="0.000001" placeholder="-31.420100" />
+                    </div>
+                    <div class="field">
+                        <label>Longitud</label>
+                        <InputNumber @bind-Value="_obra.Longitud" step="0.000001" placeholder="-64.188800" />
+                    </div>
+                    <div class="field">
+                        <label>Radio para fichar (m)</label>
+                        <InputNumber @bind-Value="_obra.RadioMetros" min="30" max="5000" />
+                    </div>
+                    <div class="field" style="justify-content:flex-end">
+                        <button type="button" class="btn btn-sm btn-outline" @onclick="UbicacionDeFichadas">Tomar de las fichadas</button>
+                        @if (_obra.Latitud is not null && _obra.Longitud is not null)
+                        {
+                            <a class="muted" style="font-size:.8rem" target="_blank" rel="noopener"
+                               href="@FormattableString.Invariant($"https://www.google.com/maps/search/?api=1&query={_obra.Latitud:0.000000},{_obra.Longitud:0.000000}")">ver en el mapa</a>
+                        }
+                    </div>
+                    <div class="field full">
+                        <label>Descripción</label>
+                        <InputTextArea @bind-Value="_obra.Descripcion" rows="3" maxlength="4000" />
+                    </div>
+                </div>
+                <div class="form-actions"><button class="btn" type="submit">Guardar datos</button></div>
+            </EditForm>
+        </div>
+
+        @* ---- Pagos ---- *@
+        <div class="card">
+            <h2>Cobros</h2>
+            <EditForm Model="_pago" OnValidSubmit="AgregarPago" FormName="obra-pago">
+            <div class="form-grid" style="margin-bottom:.75rem">
+                <div class="field"><label>Fecha</label><InputDate @bind-Value="_pago.Fecha" /></div>
+                <div class="field"><label>Monto ($)</label><InputNumber @bind-Value="_pago.Monto" /></div>
+                <div class="field">
+                    <label>Medio</label>
+                    <InputSelect @bind-Value="_pago.Medio">
+                        @foreach (var m in Enum.GetValues<MedioPago>()) { <option value="@m">@m</option> }
+                    </InputSelect>
+                </div>
+                <div class="field"><label>Concepto</label><InputText @bind-Value="_pago.Concepto" placeholder="Anticipo, 2ª cuota…" maxlength="200" /></div>
+            </div>
+            <button class="btn btn-sm" type="submit" disabled="@(_pago.Monto <= 0)">Registrar cobro</button>
+            </EditForm>
+
+            @if (_obra.Pagos.Count > 0)
+            {
+                <table style="margin-top:1rem">
+                    <tbody>
+                        @foreach (var p in _obra.Pagos.OrderByDescending(p => p.Fecha))
+                        {
+                            <tr>
+                                <td>@Textos.Fecha(p.Fecha)</td>
+                                <td>@p.Concepto <span class="muted">(@p.Medio)</span></td>
+                                <td style="text-align:right">@Textos.Moneda(p.Monto)</td>
+                                <td class="acciones"><button class="btn-link btn-danger" @onclick="() => BorrarPago(p.Id)">Quitar</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Inject] private CostosObra Costos { get; set; } = null!;
+    private Dictionary<int, CostosObra.Sugerencia> _sugerencias = [];
+
+    private async Task CausaAtrasoAsync(TareaObra t, string? valor, string? detalle = null)
+    {
+        if (Enum.TryParse<CausaAtraso>(valor, out var causa)) await Costos.InformarAtrasoAsync(t.Id, causa, detalle ?? t.DetalleAtraso, Id);
+        else await Costos.QuitarCausaAtrasoAsync(t.Id);
+        await CargarAsync();
+    }
+
+    private async Task DetalleAtrasoAsync(TareaObra t, string? detalle)
+    {
+        if (t.CausaAtraso is CausaAtraso c) await Costos.InformarAtrasoAsync(t.Id, c, detalle, Id);
+        await CargarAsync();
+    }
+
+    [Parameter] public int Id { get; set; }
+
+    private Obra? _obra;
+    private bool _noEncontrada;
+    private string? _mensaje;
+    private string _nuevaEtapa = "";
+    private RegistroAvance _registro = new();
+    private Pago _pago = NuevoPago();
+
+    private decimal TotalCobrado => _obra?.Pagos.Sum(p => p.Monto) ?? 0;
+
+    private static Pago NuevoPago() => new() { Fecha = Textos.HoyLocal() };
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _obra = await db.Obras.AsNoTracking()
+            .Include(o => o.Cliente)
+            .Include(o => o.Etapas)
+            .Include(o => o.Registros).ThenInclude(r => r.Etapa)
+            .Include(o => o.Registros).ThenInclude(r => r.Capataz)
+            .Include(o => o.Registros).ThenInclude(r => r.Albanil)
+            .Include(o => o.Registros).ThenInclude(r => r.Medios)
+            .Include(o => o.Pagos)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(o => o.Id == Id);
+        _noEncontrada = _obra is null;
+        _capataces = await db.CapatazObras.AsNoTracking().Where(x => x.ObraId == Id)
+            .Select(x => new CapatazAsignado(x.CapatazId, x.Capataz.Nombre, x.Capataz.Activo)).ToListAsync();
+
+        _tareas = await db.Tareas.AsNoTracking().Include(t => t.Etapa).Include(t => t.Albanil)
+            .Where(t => t.ObraId == Id).ToListAsync();
+        _tareas = _tareas
+            .OrderBy(t => t.Estado switch { EstadoTarea.EnCurso => 0, EstadoTarea.Pendiente => 1, EstadoTarea.Completada => 2, _ => 3 })
+            .ThenBy(t => t.Etapa?.Orden ?? int.MaxValue).ThenBy(t => t.Id).ToList();
+        var desde = DateTime.UtcNow.AddHours(-16);
+        _cuadrilla = await db.AlbanilObras.AsNoTracking().Where(x => x.ObraId == Id)
+            .OrderBy(x => x.Albanil.Nombre)
+            .Select(x => new Integrante(x.AlbanilId, x.Albanil.Nombre, x.Albanil.Oficio, x.Albanil.Capataz.Nombre,
+                db.CapatazObras.Any(c => c.ObraId == Id && c.CapatazId == x.Albanil.CapatazId),
+                db.Jornadas.Where(j => j.AlbanilId == x.AlbanilId && j.ObraId == Id && j.Salida == null && j.Entrada > desde)
+                    .OrderByDescending(j => j.Entrada).Select(j => (DateTime?)j.Entrada).FirstOrDefault()))
+            .ToListAsync();
+        _pedidosPendientes = await db.Pedidos.CountAsync(p => p.ObraId == Id && p.Estado == EstadoPedido.Pendiente);
+        _problemasAbiertos = await db.Problemas.CountAsync(p => p.ObraId == Id && p.Estado != EstadoProblema.Resuelto);
+
+        var horas = await db.ParteItems.AsNoTracking().Where(i => i.Parte.ObraId == Id && i.TareaObraId != null)
+            .Select(i => new { Tarea = i.TareaObraId!.Value, i.Horas }).ToListAsync();
+        _horasPorTarea = horas.GroupBy(h => h.Tarea).ToDictionary(g => g.Key, g => g.Sum(h => h.Horas));
+        _porValidar = await db.Registros.CountAsync(r => r.ObraId == Id && r.Validacion == EstadoValidacion.Pendiente);
+        _notasSinResponder = await db.Asientos.CountAsync(a => a.ObraId == Id && a.Tipo == TipoAsiento.NotaPedido
+            && !db.Asientos.Any(o => o.RespondeAId == a.Id));
+        var estados = await Controles.DeObraAsync(Id);
+        _controlesObservados = estados.Count(c => c.Resultado == ResultadoControl.Observado);
+        _controlesPorEtapa = estados.GroupBy(c => c.EtapaId).ToDictionary(g => g.Key,
+            g => (Total: g.Count(), Ok: g.Count(c => c.Resultado == ResultadoControl.Ok), Observados: g.Count(c => c.Resultado == ResultadoControl.Observado)));
+        _curva = await Avance.CurvaAsync(Id);
+        _sugerencias = await Costos.SugerenciasAsync(_curva.Atrasadas);
+        await CargarClimaAsync();
+    }
+
+    private Dictionary<int, decimal> _horasPorTarea = [];
+    private Dictionary<int, (int Total, int Ok, int Observados)> _controlesPorEtapa = [];
+    private int _porValidar, _notasSinResponder, _controlesObservados;
+    private AvanceObra.Curva? _curva;
+    private List<ClimaDiario> _clima = [];
+    private string? _aviso;
+
+    private record CapatazAsignado(int Id, string Nombre, bool Activo);
+    private record Integrante(int Id, string Nombre, string? Oficio, string Capataz, bool DelCapataz, DateTime? EntradaHoy);
+    private List<CapatazAsignado> _capataces = [];
+    private List<TareaObra> _tareas = [];
+    private List<Integrante> _cuadrilla = [];
+    private int _pedidosPendientes, _problemasAbiertos;
+    private bool _verCanceladas;
+    private CampoService.DatosTarea _tarea = new();
+    private int? _tareaEditando;
+    private string? _errorTarea;
+
+    private void NuevaTarea()
+    {
+        _tarea = new();
+        _tareaEditando = null;
+        _errorTarea = null;
+    }
+
+    private void EditarTarea(TareaObra t)
+    {
+        _tareaEditando = t.Id;
+        _errorTarea = null;
+        _tarea = new CampoService.DatosTarea
+        {
+            Titulo = t.Titulo, Descripcion = t.Descripcion, EtapaObraId = t.EtapaObraId, AlbanilId = t.AlbanilId,
+            Unidad = t.Unidad, CantidadObjetivo = t.CantidadObjetivo, FechaLimite = t.FechaLimite,
+            FechaInicioPlan = t.FechaInicioPlan, Rubro = t.Rubro, Peso = t.Peso, Oficio = t.Oficio,
+        };
+    }
+
+    private async Task GuardarTarea()
+    {
+        if (string.IsNullOrWhiteSpace(_tarea.Unidad)) _tarea.CantidadObjetivo = null;
+        _errorTarea = _tareaEditando is int id
+            ? await Campo.ActualizarTareaAsync(id, _tarea)
+            : (await Campo.CrearTareaAsync(Id, _tarea)).Error;
+        if (_errorTarea is not null) return;
+        _mensaje = _tareaEditando is null ? "Tarea agregada: ya la ve la cuadrilla en la app." : "Tarea actualizada.";
+        NuevaTarea();
+        await CargarAsync();
+    }
+
+    private async Task CambiarEstadoTarea(int tareaId, object? valor)
+    {
+        if (!Enum.TryParse<EstadoTarea>(valor?.ToString(), out var estado)) return;
+        await Campo.CambiarEstadoTareaAsync(tareaId, estado);
+        _mensaje = null;
+        await CargarAsync();
+    }
+
+    private async Task MarcarParaRedes(int registroId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Registros.Where(r => r.Id == registroId && r.ObraId == Id).ExecuteUpdateAsync(s => s.SetProperty(r => r.UsableEnRedes, true));
+        await CargarAsync();
+    }
+
+    private async Task CambiarEtapa(int etapaId, object? valor)
+    {
+        if (!Enum.TryParse<EstadoEtapa>(valor?.ToString(), out var estado)) return;
+        await Estudio.CambiarEstadoEtapaAsync(etapaId, estado);
+        _mensaje = null;
+        _aviso = null;
+        // Cerrar una etapa con controles sin hacer u observados: se permite, pero se avisa.
+        if (estado == EstadoEtapa.Completada && _controlesPorEtapa.TryGetValue(etapaId, out var c) && c.Ok < c.Total)
+            _aviso = $"Ojo: la etapa quedó completada con {c.Total - c.Ok} control(es) sin aprobar{(c.Observados > 0 ? $" ({c.Observados} observado/s)" : "")}.";
+        await CargarAsync();
+    }
+
+    private async Task AgregarEtapa()
+    {
+        if (_obra is null || string.IsNullOrWhiteSpace(_nuevaEtapa)) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var orden = _obra.Etapas.Count == 0 ? 1 : _obra.Etapas.Max(e => e.Orden) + 1;
+        db.Etapas.Add(new EtapaObra { ObraId = _obra.Id, Nombre = _nuevaEtapa.Trim(), Orden = orden });
+        await db.SaveChangesAsync();
+        _nuevaEtapa = "";
+        await CargarAsync();
+    }
+
+    private async Task AgregarRegistro()
+    {
+        if (_obra is null || string.IsNullOrWhiteSpace(_registro.Titulo)) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Registros.Add(new RegistroAvance
+        {
+            ObraId = _obra.Id,
+            EtapaObraId = _registro.EtapaObraId,
+            Fecha = DateTime.UtcNow,
+            Titulo = _registro.Titulo.Trim(),
+            Descripcion = string.IsNullOrWhiteSpace(_registro.Descripcion) ? null : _registro.Descripcion.Trim(),
+            UsableEnRedes = _registro.UsableEnRedes,
+        });
+        await db.SaveChangesAsync();
+        _registro = new();
+        await CargarAsync();
+    }
+
+    private async Task GuardarDatos()
+    {
+        if (_obra is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var e = await db.Obras.SingleAsync(o => o.Id == _obra.Id);
+        e.Nombre = string.IsNullOrWhiteSpace(_obra.Nombre) ? e.Nombre : _obra.Nombre.Trim();
+        e.Estado = _obra.Estado;
+        e.ExpedienteMunicipal = _obra.ExpedienteMunicipal;
+        e.Direccion = _obra.Direccion;
+        e.Localidad = _obra.Localidad;
+        e.FechaInicio = _obra.FechaInicio;
+        e.FechaEntregaEstimada = _obra.FechaEntregaEstimada;
+        e.FechaFinalizacion = _obra.Estado == EstadoObra.Finalizada ? _obra.FechaFinalizacion ?? Textos.HoyLocal() : _obra.FechaFinalizacion;
+        e.MontoPresupuesto = _obra.MontoPresupuesto;
+        e.Descripcion = _obra.Descripcion;
+        var cambioUbicacion = e.Latitud != _obra.Latitud || e.Longitud != _obra.Longitud;
+        if (_obra.Latitud is < -90 or > 90 || _obra.Longitud is < -180 or > 180 || (_obra.Latitud is null) != (_obra.Longitud is null))
+        {
+            _aviso = "La ubicación no es válida (latitud y longitud, ej. -31.42 y -64.18).";
+            return;
+        }
+        e.Latitud = _obra.Latitud;
+        e.Longitud = _obra.Longitud;
+        e.RadioMetros = Math.Clamp(_obra.RadioMetros, 30, 5000);
+        await db.SaveChangesAsync();
+        _mensaje = "Datos guardados.";
+        _aviso = null;
+        if (cambioUbicacion && e.Latitud is not null) await ActualizarClima();
+        await CargarAsync();
+    }
+
+    /// <summary>Ubicación = mediana de las entradas fichadas con buena precisión (al menos 3).</summary>
+    private async Task UbicacionDeFichadas()
+    {
+        if (_obra is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var puntos = await db.Jornadas.AsNoTracking()
+            .Where(j => j.ObraId == _obra.Id && j.EntradaLatitud != null && j.EntradaLongitud != null && (j.EntradaPrecision == null || j.EntradaPrecision <= 50))
+            .OrderByDescending(j => j.Entrada).Take(50)
+            .Select(j => new { Lat = j.EntradaLatitud!.Value, Lon = j.EntradaLongitud!.Value }).ToListAsync();
+        if (Geo.Mediana(puntos.Select(p => (p.Lat, p.Lon)).ToList()) is not { } m)
+        {
+            _aviso = "Hacen falta al menos 3 fichadas con GPS para estimar la ubicación.";
+            return;
+        }
+        _obra.Latitud = Math.Round(m.Lat, 6);
+        _obra.Longitud = Math.Round(m.Lon, 6);
+        _aviso = null;
+        _mensaje = $"Ubicación estimada con {puntos.Count} fichadas. Revisala en el mapa y tocá «Guardar datos».";
+    }
+
+    private async Task ActualizarClima()
+    {
+        if (_obra is null) return;
+        try { await Clima.ActualizarObraAsync(_obra.Id); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            _aviso = "No se pudo consultar el clima ahora. Se vuelve a intentar solo cada 6 horas.";
+        }
+        await CargarClimaAsync();
+    }
+
+    private async Task CargarClimaAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var hoy = Textos.HoyLocal();
+        _clima = await db.Climas.AsNoTracking().Where(c => c.ObraId == Id && c.Fecha >= hoy.AddDays(-7) && c.Fecha <= hoy.AddDays(2)).OrderBy(c => c.Fecha).ToListAsync();
+    }
+
+    private async Task ActivarPortal()
+    {
+        await Portal.ActivarAsync(Id);
+        _mensaje = "Link del portal listo. Compartilo con el cliente.";
+        await CargarAsync();
+    }
+
+    private async Task ApagarPortal()
+    {
+        await Portal.ApagarAsync(Id);
+        _mensaje = "Portal apagado: el link deja de funcionar.";
+        await CargarAsync();
+    }
+
+    private async Task VisibleCliente(int registroId, bool visible)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Registros.Where(r => r.Id == registroId && r.ObraId == Id).ExecuteUpdateAsync(s => s.SetProperty(r => r.VisibleCliente, visible));
+        await CargarAsync();
+    }
+
+    private async Task AgregarPago()
+    {
+        if (_obra is null || _pago.Monto <= 0) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Pagos.Add(new Pago { ObraId = _obra.Id, Fecha = _pago.Fecha, Monto = _pago.Monto, Medio = _pago.Medio, Concepto = _pago.Concepto });
+        await db.SaveChangesAsync();
+        _pago = NuevoPago();
+        await CargarAsync();
+    }
+
+    private async Task BorrarPago(int pagoId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Pagos.Where(p => p.Id == pagoId && p.ObraId == Id).ExecuteDeleteAsync();
+        await CargarAsync();
+    }
+}

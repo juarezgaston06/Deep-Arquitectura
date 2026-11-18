@@ -1,0 +1,87 @@
+@page "/electricidad"
+
+<PageTitle>Deep Arquitectura | Soluciones Eléctricas</PageTitle>
+<HeadContent>
+    <meta name="description" content="Deep Arquitectura - Servicios especializados de electricidad. Instalaciones, tableros y mantenimiento profesional.">
+    <style>
+        .hero-electricidad { background-color: #fcf8f3; }
+        .service-icon.electric { background: #d4a373; }
+        .hero-image-electric { background-image: url('/img/electricidad-hero.jpg'); }
+    </style>
+</HeadContent>
+
+<SiteHeader>
+    <li><a href="/">Inicio</a></li>
+    <li><a href="#servicios-electricos">Servicios</a></li>
+    <li><a href="#contacto">Contacto</a></li>
+</SiteHeader>
+
+<main>
+    <section id="hero" class="hero hero-electricidad">
+        <div class="hero-content">
+            <span class="subtitle reveal">Especialistas en Electricidad</span>
+            <h1 class="reveal delay-1">Energía que <br><span class="highlight">ilumina</span> tu diseño.</h1>
+            <p class="reveal delay-2">Ofrecemos soluciones eléctricas integrales para obras residenciales y
+                comerciales, priorizando la seguridad y la eficiencia técnica.</p>
+            <div class="hero-btns reveal delay-3">
+                <a href="#contacto" class="btn btn-primary">Pedir Presupuesto</a>
+                <a href="#servicios-electricos" class="btn btn-outline">Nuestros Servicios</a>
+            </div>
+        </div>
+        <div class="hero-image hero-image-electric reveal fade-in"></div>
+        <div class="leaf-overlay"></div>
+    </section>
+
+    <section id="servicios-electricos" class="servicios">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2>Servicios Eléctricos</h2>
+                <p>Mantenimiento, instalaciones y asesoramiento técnico profesional.</p>
+            </div>
+            <div class="services-grid">
+                <div class="service-card reveal">
+                    <div class="service-icon electric">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                        </svg>
+                    </div>
+                    <h3>Instalaciones de Obra</h3>
+                    <p>Cableado completo, distribución de circuitos y bocas para construcciones nuevas y reformas.</p>
+                </div>
+                <div class="service-card reveal">
+                    <div class="service-icon electric">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M4 7v10c0 1.1.9 2 2 2h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2z" />
+                            <path d="M12 5v14M4 12h16" />
+                        </svg>
+                    </div>
+                    <h3>Tableros Eléctricos</h3>
+                    <p>Armado y modernización de tableros con protecciones de última generación (ID y PIAs).</p>
+                </div>
+                <div class="service-card reveal">
+                    <div class="service-icon electric">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" />
+                        </svg>
+                    </div>
+                    <h3>Iluminación LED</h3>
+                    <p>Diseño y colocación de luminarias para destacar detalles arquitectónicos y mejorar el consumo.</p>
+                </div>
+                <div class="service-card reveal">
+                    <div class="service-icon electric">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </div>
+                    <h3>Gestión & Planos</h3>
+                    <p>Habilitaciones municipales y elaboración de planos eléctricos técnicos bajo normativa vigente.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <ContactSection Titulo="@((MarkupString)"Consulta <br>Técnica")"
+                    Texto="Contáctanos para obtener un diagnóstico o presupuesto para tu instalación eléctrica."
+                    Placeholder="Detalle su necesidad eléctrica (Ej: Cambio de tablero, instalación nueva, etc.)"
+                    Area="AreaConsulta.Electricidad" />
+</main>

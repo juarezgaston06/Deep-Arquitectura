@@ -1,0 +1,134 @@
+@page "/admin/consultas"
+@rendermode InteractiveServer
+@inject EstudioService Estudio
+
+<PageTitle>Consultas | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Consultas</h1>
+        <p>Mensajes que llegan desde el formulario del sitio.</p>
+    </div>
+</div>
+
+<div class="toolbar">
+    <select @bind="_filtro" @bind:after="CargarAsync">
+        <option value="">Pendientes (nuevas y contactadas)</option>
+        @foreach (var e in Enum.GetValues<EstadoConsulta>())
+        {
+            <option value="@e">@Textos.Etiqueta(e)</option>
+        }
+        <option value="todas">Todas</option>
+    </select>
+</div>
+
+<div class="card">
+    @if (_consultas.Count == 0)
+    {
+        <p class="empty">No hay consultas para mostrar.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Fecha</th><th>Contacto</th><th>Mensaje</th><th>Llegó por</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in _consultas)
+                {
+                    <tr>
+                        <td class="muted">@Textos.Fecha(c.CreadoEn)<br />@Textos.Etiqueta(c.Area)</td>
+                        <td><strong>@c.Nombre</strong><br /><a href="mailto:@c.Email">@c.Email</a></td>
+                        <td style="max-width:420px">@c.Mensaje</td>
+                        <td>
+                            <select value="@c.Canal" @onchange="e => CambiarCanal(c.Id, e.Value)">
+                                @foreach (var o in Enum.GetValues<OrigenCliente>()) { <option value="@o">@Textos.Etiqueta(o)</option> }
+                            </select>
+                            <div class="muted" style="font-size:.8rem">
+                                @if (c.Publicacion is not null) { <span>Publicación: @c.Publicacion.Titulo</span><br /> }
+                                else if (c.UtmCampania is not null) { <span>Campaña: @c.UtmCampania</span><br /> }
+                                @if (c.Referente is not null) { <span>Desde @c.Referente</span> }
+                            </div>
+                        </td>
+                        <td>
+                            <span class="@Textos.ClaseEstado(c.Estado)">@Textos.Etiqueta(c.Estado)</span>
+                            @if (c.MotivoDescarte is MotivoPerdida mp) { <div class="muted">@Textos.Etiqueta(mp)</div> }
+                            @if (c.ContactadaEn is DateTime ce) { <div class="muted" style="font-size:.8rem">Respondida en @Textos.Demora(ce - c.CreadoEn)</div> }
+                        </td>
+                        <td class="acciones">
+                            <a class="btn-link" href="/admin/relevamientos/nuevo?consulta=@c.Id">Relevamiento</a>
+                            @if (c.ClienteId is int cid)
+                            {
+                                <a class="btn btn-sm btn-outline" href="/admin/clientes/@cid">Ver cliente</a>
+                            }
+                            else
+                            {
+                                @if (c.Estado == EstadoConsulta.Nueva)
+                                {
+                                    <button class="btn-link" @onclick="() => CambiarEstado(c.Id, EstadoConsulta.Contactada)">Contactada</button>
+                                }
+                                <button class="btn btn-sm" @onclick="() => Convertir(c.Id)">Pasar a cliente</button>
+                                @if (c.Estado != EstadoConsulta.Descartada)
+                                {
+                                    @if (_descartando == c.Id)
+                                    {
+                                        <select @bind="_motivo">
+                                            <option value="">¿Por qué?</option>
+                                            @foreach (var m in Enum.GetValues<MotivoPerdida>()) { <option value="@m">@Textos.Etiqueta(m)</option> }
+                                        </select>
+                                        <button class="btn-link btn-danger" disabled="@(_motivo is null)" @onclick="() => CambiarEstado(c.Id, EstadoConsulta.Descartada)">Confirmar</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-link btn-danger" @onclick="() => { _descartando = c.Id; _motivo = null; }">Descartar</button>
+                                    }
+                                }
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private string _filtro = "";
+    private List<Consulta> _consultas = [];
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var q = db.Consultas.AsNoTracking();
+        q = _filtro switch
+        {
+            "" => q.Where(c => c.Estado == EstadoConsulta.Nueva || c.Estado == EstadoConsulta.Contactada),
+            "todas" => q,
+            var f when Enum.TryParse<EstadoConsulta>(f, out var e) => q.Where(c => c.Estado == e),
+            _ => q,
+        };
+        _consultas = await q.Include(c => c.Publicacion).OrderByDescending(c => c.CreadoEn).Take(200).ToListAsync();
+    }
+
+    private int? _descartando;
+    private MotivoPerdida? _motivo;
+
+    private async Task CambiarEstado(int id, EstadoConsulta estado)
+    {
+        await Estudio.CambiarEstadoConsultaAsync(id, estado, _motivo);
+        _descartando = null;
+        await CargarAsync();
+    }
+
+    private async Task CambiarCanal(int id, object? valor)
+    {
+        if (Enum.TryParse<OrigenCliente>(valor?.ToString(), out var canal)) await Estudio.CambiarCanalAsync(id, canal);
+        await CargarAsync();
+    }
+
+    private async Task Convertir(int id)
+    {
+        var clienteId = await Estudio.ConvertirEnClienteAsync(id);
+        Nav.NavigateTo($"/admin/clientes/{clienteId}");
+    }
+}

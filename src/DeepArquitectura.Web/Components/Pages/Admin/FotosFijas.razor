@@ -1,0 +1,154 @@
+@page "/admin/obras/{Id:int}/fotos-fijas"
+@rendermode InteractiveServer
+@implements IDisposable
+
+<PageTitle>Fotos fijas | Deep Arquitectura</PageTitle>
+
+@if (_obra is null)
+{
+    <p class="muted">Cargando…</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>Fotos desde puntos fijos</h1>
+            <p><a href="/admin/obras/@Id">@_obra.Codigo · @_obra.Nombre</a> · siempre el mismo encuadre, cada tanto: se ve la evolución de la obra (para el cliente y para redes).</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Puntos</h2>
+        <table>
+            <thead><tr><th>Punto</th><th>Cada</th><th>Fotos</th><th>Última</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in _puntos)
+                {
+                    var fotos = _fotos.GetValueOrDefault(p.Id) ?? [];
+                    <tr class="@(p.Activo ? "" : "muted")">
+                        <td><strong>@p.Nombre</strong>@if (p.Indicacion is not null) { <div class="muted">@p.Indicacion</div> }</td>
+                        <td>@p.FrecuenciaDias días</td>
+                        <td>@fotos.Count</td>
+                        <td>@(fotos.Count == 0 ? "—" : Textos.Fecha(fotos[^1].Fecha))</td>
+                        <td class="acciones">
+                            <label style="font-size:.8rem"><input type="checkbox" checked="@p.VisibleCliente" @onchange="ev => Cambiar(p.Id, visible: ev.Value is true)" /> portal</label>
+                            <button class="btn-link" @onclick="() => Cambiar(p.Id, activo: !p.Activo)">@(p.Activo ? "Pausar" : "Reactivar")</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="form-grid" style="margin-top:.75rem">
+            <div class="field"><label>Nombre</label><input @bind="_nombre" maxlength="120" placeholder="Fachada, Patio, Living…" /></div>
+            <div class="field"><label>Cada cuántos días</label><input type="number" min="1" max="60" @bind="_frecuencia" /></div>
+            <div class="field full"><label>Cómo sacarla</label><input @bind="_indicacion" maxlength="500" placeholder="Desde la vereda de enfrente, junto al poste de luz, mirando la fachada." /></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-sm" @onclick="Agregar" disabled="@string.IsNullOrWhiteSpace(_nombre)">Agregar punto</button></div>
+        <p class="muted" style="font-size:.85rem">En la app aparecen como «Fotos fijas»: la cuadrilla ve la foto anterior para encuadrar igual y cuáles toca sacar.</p>
+    </div>
+
+    @foreach (var p in _puntos.Where(p => (_fotos.GetValueOrDefault(p.Id)?.Count ?? 0) > 0))
+    {
+        var fotos = _fotos[p.Id];
+        var (antes, despues) = (_antes.GetValueOrDefault(p.Id, 0), _despues.GetValueOrDefault(p.Id, fotos.Count - 1));
+        <div class="card">
+            <h2>@p.Nombre</h2>
+            <div class="toolbar">
+                <label>Antes <select value="@antes" @onchange="ev => _antes[p.Id] = int.Parse(ev.Value!.ToString()!)">
+                    @for (var i = 0; i < fotos.Count; i++) { var j = i; <option value="@j">@Textos.Fecha(fotos[j].Fecha)</option> }
+                </select></label>
+                <label>Después <select value="@despues" @onchange="ev => _despues[p.Id] = int.Parse(ev.Value!.ToString()!)">
+                    @for (var i = 0; i < fotos.Count; i++) { var j = i; <option value="@j">@Textos.Fecha(fotos[j].Fecha)</option> }
+                </select></label>
+                <button class="btn btn-sm btn-outline" @onclick="() => Reproducir(p.Id)">@(_reproduciendo == p.Id ? "■ Parar" : "▶ Ver evolución")</button>
+            </div>
+            @if (_reproduciendo == p.Id)
+            {
+                var f = fotos[_cuadro % fotos.Count];
+                <div style="text-align:center">
+                    <img src="/admin/medios/@f.MedioId" style="max-width:100%;max-height:480px;border-radius:8px" alt="@p.Nombre" />
+                    <div class="muted">@Textos.Fecha(f.Fecha) · @(_cuadro % fotos.Count + 1)/@fotos.Count</div>
+                </div>
+            }
+            else
+            {
+                <div class="grid-2">
+                    @foreach (var (f, etiqueta) in new[] { (fotos[antes], "Antes"), (fotos[despues], "Después") })
+                    {
+                        <div style="text-align:center">
+                            <a href="/admin/medios/@f.MedioId" target="_blank"><img src="/admin/medios/@f.MedioId" loading="lazy" style="max-width:100%;max-height:380px;border-radius:8px" alt="@etiqueta" /></a>
+                            <div class="muted">@etiqueta · @Textos.Fecha(f.Fecha)</div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private sealed record Foto(int MedioId, DateTime Fecha);
+
+    private Obra? _obra;
+    private List<PuntoFoto> _puntos = [];
+    private Dictionary<int, List<Foto>> _fotos = [];
+    private readonly Dictionary<int, int> _antes = [], _despues = [];
+    private string _nombre = "", _indicacion = "";
+    private int _frecuencia = 7;
+    private int? _reproduciendo;
+    private int _cuadro;
+    private System.Threading.Timer? _timer;
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _obra = await db.Obras.AsNoTracking().SingleOrDefaultAsync(o => o.Id == Id);
+        _puntos = await db.PuntosFoto.AsNoTracking().Where(p => p.ObraId == Id).OrderBy(p => p.Orden).ThenBy(p => p.Id).ToListAsync();
+        var fotos = await db.Medios.AsNoTracking()
+            .Where(m => m.Tipo == TipoMedio.Foto && m.Registro.ObraId == Id && m.Registro.PuntoFotoId != null)
+            .Select(m => new { Punto = m.Registro.PuntoFotoId!.Value, m.Id, m.Registro.Fecha }).ToListAsync();
+        _fotos = fotos.GroupBy(f => f.Punto).ToDictionary(g => g.Key, g => g.OrderBy(f => f.Fecha).Select(f => new Foto(f.Id, f.Fecha)).ToList());
+    }
+
+    private async Task Agregar()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.PuntosFoto.Add(new PuntoFoto
+        {
+            ObraId = Id, Nombre = _nombre.Trim(), Indicacion = string.IsNullOrWhiteSpace(_indicacion) ? null : _indicacion.Trim(),
+            FrecuenciaDias = Math.Clamp(_frecuencia, 1, 60), Orden = _puntos.Count + 1,
+        });
+        await db.SaveChangesAsync();
+        _nombre = _indicacion = "";
+        await CargarAsync();
+    }
+
+    private async Task Cambiar(int puntoId, bool? activo = null, bool? visible = null)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var p = await db.PuntosFoto.SingleAsync(x => x.Id == puntoId && x.ObraId == Id);
+        if (activo is bool a) p.Activo = a;
+        if (visible is bool v)
+        {
+            p.VisibleCliente = v;
+            await db.Registros.Where(r => r.PuntoFotoId == puntoId).ExecuteUpdateAsync(s => s.SetProperty(r => r.VisibleCliente, v));
+        }
+        await db.SaveChangesAsync();
+        await CargarAsync();
+    }
+
+    private void Reproducir(int puntoId)
+    {
+        _timer?.Dispose();
+        if (_reproduciendo == puntoId) { _reproduciendo = null; return; }
+        _reproduciendo = puntoId;
+        _cuadro = 0;
+        _timer = new System.Threading.Timer(_ => InvokeAsync(() => { _cuadro++; StateHasChanged(); }), null, 900, 900);
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

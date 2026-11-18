@@ -1,0 +1,83 @@
+@page "/mi-obra/avance"
+@inherits PaginaCliente
+@inject AppCliente App
+
+<PageTitle>Avance | Mi obra</PageTitle>
+
+<h1>Avance de la obra</h1>
+
+@if (_a is { } a)
+{
+    <p class="suave">Cuenta solo lo que el capataz o el estudio revisaron y aprobaron.</p>
+
+    @if (a.Curva is { Puntos.Count: > 0 } curva)
+    {
+        <section class="tarjeta">
+            <h2>Cómo venimos</h2>
+            <div class="datos datos-2">
+                <div><span>Planificado a hoy</span><strong>@Math.Round(curva.PlanHoy)%</strong></div>
+                <div><span>Hecho</span><strong>@Math.Round(curva.RealHoy)%</strong></div>
+            </div>
+            <CurvaAvance Puntos="curva.Puntos" />
+        </section>
+    }
+
+    @foreach (var (e, n) in a.Etapas.Select((e, n) => (e, n + 1)))
+    {
+        <details class="tarjeta etapa" open="@(e.Estado == EstadoEtapa.EnCurso)">
+            <summary>
+                <span class="orden">@n</span>
+                <span class="nombre">
+                    <strong>@e.Nombre</strong>
+                    <span class="suave chico">@Estado(e)</span>
+                </span>
+                <span class="pct">@e.Porcentaje%</span>
+            </summary>
+            <div class="barra" role="progressbar" aria-valuenow="@e.Porcentaje" aria-valuemin="0" aria-valuemax="100"><span style="width:@(e.Porcentaje)%"></span></div>
+            @if (e.Trabajos.Count == 0)
+            {
+                <p class="suave chico">Sin trabajos detallados para esta etapa.</p>
+            }
+            <ul class="trabajos">
+                @foreach (var t in e.Trabajos)
+                {
+                    <li>
+                        <div class="fila">
+                            <span>@t.Titulo</span>
+                            <strong>@t.Porcentaje%</strong>
+                        </div>
+                        <div class="barra fina"><span style="width:@(t.Porcentaje)%"></span></div>
+                        <div class="suave chico">
+                            @if (t.Unidad is not null && t.Objetivo is decimal obj)
+                            {
+                                <span>@Textos.Numero(t.Hecho ?? 0) de @Textos.Numero(obj) @t.Unidad</span>
+                            }
+                            @if (t.Inicio is not null || t.Fin is not null)
+                            {
+                                <span> · previsto @(t.Inicio is null ? "" : Textos.Fecha(t.Inicio))@(t.Inicio is not null && t.Fin is not null ? " al " : "")@(t.Fin is null ? "" : Textos.Fecha(t.Fin))</span>
+                            }
+                        </div>
+                        @if (t.Detalle is not null) { <p class="chico">@t.Detalle</p> }
+                    </li>
+                }
+            </ul>
+        </details>
+    }
+    @if (a.Etapas.Count == 0)
+    {
+        <p class="vacio">Todavía no cargamos las etapas de la obra.</p>
+    }
+}
+
+@code {
+    private AppCliente.Avance? _a;
+
+    protected override async Task CargarAsync() => _a = await App.AvanceAsync(ObraId);
+
+    private static string Estado(AppCliente.EtapaCliente e) => e.Estado switch
+    {
+        EstadoEtapa.Completada => e.Fin is DateOnly f ? $"Terminada el {Textos.Fecha(f)}" : "Terminada",
+        EstadoEtapa.EnCurso => e.Inicio is DateOnly i ? $"En curso desde el {Textos.Fecha(i)}" : "En curso",
+        _ => "Por empezar",
+    };
+}

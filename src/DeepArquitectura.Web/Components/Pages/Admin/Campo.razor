@@ -1,0 +1,377 @@
+@page "/admin/campo"
+@rendermode InteractiveServer
+@inject CampoService CampoSvc
+@inject ValidacionAvances Validacion
+
+<PageTitle>En obra | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>En obra</h1>
+        <p>Lo que mandan los albañiles desde la app: pedidos de material, problemas, asistencia y partes diarios.</p>
+    </div>
+</div>
+
+<div class="toolbar">
+    <button class="@Pestania("validar")" @onclick='() => Ir("validar")'>Validar avances @if (_porValidar > 0) { <span class="chip chip-alerta">@_porValidar</span> }</button>
+    <button class="@Pestania("pedidos")" @onclick='() => Ir("pedidos")'>Pedidos @if (_pedidosPendientes > 0) { <span class="chip chip-alerta">@_pedidosPendientes</span> }</button>
+    <button class="@Pestania("problemas")" @onclick='() => Ir("problemas")'>Problemas @if (_problemasAbiertos > 0) { <span class="chip chip-alerta">@_problemasAbiertos</span> }</button>
+    <button class="@Pestania("recepciones")" @onclick='() => Ir("recepciones")'>Materiales recibidos</button>
+    <button class="@Pestania("asistencia")" @onclick='() => Ir("asistencia")'>Asistencia</button>
+    <button class="@Pestania("partes")" @onclick='() => Ir("partes")'>Partes diarios</button>
+    <div class="spacer"></div>
+    <select @bind="_obraId" @bind:after="CambiarObra">
+        <option value="">Todas las obras</option>
+        @foreach (var o in _obras) { <option value="@o.Id">@o.Codigo · @o.Nombre</option> }
+    </select>
+    @if (_tab is "pedidos" or "problemas")
+    {
+        <label style="display:flex;gap:.4rem;align-items:center;font-size:.9rem">
+            <input type="checkbox" @bind="_soloAbiertos" @bind:after="CargarAsync" /> Solo sin resolver
+        </label>
+    }
+</div>
+
+@if (_mensaje is not null) { <div class="alert alert-ok">@_mensaje</div> }
+
+@switch (_tab)
+{
+    case "validar":
+        <div class="card">
+            <p class="muted" style="margin-bottom:.75rem">Lo que informaron los albañiles y todavía no confirmó el capataz (lo puede hacer desde su app). Lo aprobado es lo que cuenta para rendimientos y certificados.</p>
+            @if (_pendientes.Count == 0) { <p class="empty">No hay avances por validar.</p> }
+            else
+            {
+                <button class="btn btn-sm btn-outline" style="margin-bottom:.75rem" @onclick="AprobarTodos">Aprobar los @_pendientes.Count</button>
+                <table>
+                    <thead><tr><th>Avance</th><th>Informado</th><th>Fotos</th><th>Decisión</th></tr></thead>
+                    <tbody>
+                        @foreach (var v in _pendientes)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@v.Tarea</strong>
+                                    <div class="muted">@Textos.Fecha(v.Fecha) · <a href="/admin/obras/@v.ObraId">@v.ObraCodigo</a> · @v.Albanil</div>
+                                    @if (v.Nota is not null) { <div class="muted">«@v.Nota»</div> }
+                                </td>
+                                <td>
+                                    @(v.Terminada ? "terminó la tarea" : v.Unidad is not null ? $"{Textos.Numero(v.Cantidad ?? 0)} {v.Unidad}" : $"{v.Porcentaje}%")
+                                    @if (v.Unidad is not null && v.CantidadObjetivo is > 0) { <div class="muted" style="font-size:.8rem">aprobado antes: @Textos.Numero(v.CantidadAprobadaTarea) de @Textos.Numero(v.CantidadObjetivo.Value)</div> }
+                                </td>
+                                <td>@(v.Fotos + v.Videos == 0 ? "—" : $"📷 {v.Fotos} 🎥 {v.Videos}") <a href="/admin/obras/@v.ObraId" class="muted" style="font-size:.8rem">ver</a></td>
+                                <td>
+                                    <div class="toolbar" style="margin:0">
+                                        <button class="btn btn-sm" @onclick="() => Validar(v, EstadoValidacion.Aprobado)">Aprobar</button>
+                                        <input type="number" step="0.01" min="0" style="width:90px" placeholder="@(v.Unidad ?? "%")" @bind="_correccion[v.RegistroId]" />
+                                        <button class="btn btn-sm btn-outline" @onclick="() => Validar(v, EstadoValidacion.Corregido)" disabled="@(_correccion.GetValueOrDefault(v.RegistroId) is null)">Corregir</button>
+                                        <input placeholder="motivo" style="width:140px" maxlength="500" @bind="_motivo[v.RegistroId]" />
+                                        <button class="btn-link btn-danger" @onclick="() => Validar(v, EstadoValidacion.Rechazado)">Rechazar</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+        break;
+
+    case "recepciones":
+        <div class="card">
+            @if (_recepciones.Count == 0) { <p class="empty">Sin material recibido en los últimos 30 días.</p> }
+            <ul class="timeline">
+                @foreach (var r in _recepciones)
+                {
+                    <li>
+                        <div class="fecha">
+                            @Textos.Fecha(r.Fecha) · <a href="/admin/obras/@r.ObraId">@r.Obra.Codigo</a> · recibió @(r.Albanil?.Nombre ?? r.Capataz?.Nombre)
+                            @if (r.PedidoMaterialId is not null) { <span> · pedido #@r.PedidoMaterialId</span> } else { <span class="chip">sin pedido</span> }
+                        </div>
+                        <ul style="margin:.25rem 0 0 1rem">
+                            @foreach (var i in r.Items.OrderBy(i => i.Id)) { <li><strong>@Textos.Numero(i.Cantidad) @i.Unidad</strong> @i.Material</li> }
+                        </ul>
+                        <div class="muted">@string.Join(" · ", new[] { r.Proveedor, r.NumeroRemito is null ? null : $"remito {r.NumeroRemito}", r.Nota }.Where(x => x is not null))</div>
+                        <MediosGaleria Lista="r.Registro?.Medios" />
+                    </li>
+                }
+            </ul>
+        </div>
+        break;
+
+    case "problemas":
+        <div class="card">
+            @if (_problemas.Count == 0) { <p class="empty">No hay problemas@(_soloAbiertos ? " sin resolver" : "").</p> }
+            <ul class="timeline">
+                @foreach (var p in _problemas)
+                {
+                    <li>
+                        <div class="fecha">
+                            @Textos.Fecha(p.Fecha) · <a href="/admin/obras/@p.ObraId">@p.Obra.Codigo</a> ·
+                            <a href="/admin/albaniles/@p.AlbanilId">@p.Albanil.Nombre</a>@(p.Capataz is null ? "" : $" (cuadrilla de {p.Capataz.Nombre})")
+                            @if (p.Tarea is not null) { <span> · @p.Tarea.Titulo</span> }
+                        </div>
+                        <strong>@Textos.Etiqueta(p.Tipo)</strong>
+                        <span class="@Textos.ClaseEstado(p.Urgencia)">urgencia @p.Urgencia.ToString().ToLowerInvariant()</span>
+                        <span class="@Textos.ClaseEstado(p.Estado)">@Textos.Etiqueta(p.Estado)</span>
+                        <div style="white-space:pre-line">@p.Descripcion</div>
+                        <MediosGaleria Lista="p.Registro?.Medios" />
+                        @if (p.Respuesta is not null) { <div class="muted">Respuesta: @p.Respuesta</div> }
+                        <div class="toolbar" style="margin:.5rem 0 0">
+                            <input placeholder="Respuesta para el albañil (opcional)" maxlength="1000" @bind="_respProblema[p.Id]" />
+                            @if (p.Estado == EstadoProblema.Abierto) { <button class="btn btn-sm btn-outline" @onclick="() => Problema(p.Id, EstadoProblema.EnRevision)">En revisión</button> }
+                            @if (p.Estado != EstadoProblema.Resuelto) { <button class="btn btn-sm" @onclick="() => Problema(p.Id, EstadoProblema.Resuelto)">Resuelto</button> }
+                            else { <button class="btn btn-sm btn-outline" @onclick="() => Problema(p.Id, EstadoProblema.Abierto)">Reabrir</button> }
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+        break;
+
+    case "asistencia":
+        <div class="card">
+            <p class="muted" style="margin-bottom:.75rem">Últimos 14 días. 📍 abre la ubicación del teléfono al fichar. «Sin salida»: se olvidó de fichar la salida.</p>
+            @if (_jornadas.Count == 0) { <p class="empty">Sin fichadas.</p> }
+            else
+            {
+                <table style="margin-bottom:1rem">
+                    <thead><tr><th>Albañil</th><th style="text-align:right">Días</th><th style="text-align:right">Horas</th></tr></thead>
+                    <tbody>
+                        @foreach (var g in _jornadas.GroupBy(j => j.Albanil.Nombre).OrderBy(g => g.Key))
+                        {
+                            <tr>
+                                <td>@g.Key</td>
+                                <td style="text-align:right">@g.Select(j => DateOnly.FromDateTime(Textos.AHoraLocal(j.Entrada))).Distinct().Count()</td>
+                                <td style="text-align:right">@Textos.Numero((decimal)g.Sum(j => j.Horas ?? 0))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <JornadasTabla Jornadas="_jornadas" MostrarObra="@(_obraId is null)" />
+            }
+        </div>
+        break;
+
+    case "partes":
+        <div class="card">
+            @if (_partes.Count == 0) { <p class="empty">Sin partes en los últimos 14 días.</p> }
+            <ul class="timeline">
+                @foreach (var p in _partes)
+                {
+                    <li>
+                        <div class="fecha">
+                            @Textos.Fecha(p.Fecha) · <a href="/admin/obras/@p.ObraId">@p.Obra.Codigo</a> ·
+                            <a href="/admin/albaniles/@p.AlbanilId">@p.Albanil.Nombre</a> · @Textos.Numero(p.HorasTotales) h
+                        </div>
+                        @if (p.Resumen is not null) { <div style="white-space:pre-line">@p.Resumen</div> }
+                        @if (p.Items.Count > 0)
+                        {
+                            <ul style="margin:.25rem 0 0 1rem">
+                                @foreach (var i in p.Items.OrderBy(i => i.Id))
+                                {
+                                    <li>@Textos.Numero(i.Horas) h · @(i.Tarea?.Titulo ?? "Otras tareas")@(i.Detalle is null ? "" : $" — {i.Detalle}")</li>
+                                }
+                            </ul>
+                        }
+                    </li>
+                }
+            </ul>
+        </div>
+        break;
+
+    default:
+        <div class="card">
+            @if (_pedidos.Count == 0) { <p class="empty">No hay pedidos@(_soloAbiertos ? " sin resolver" : "").</p> }
+            <ul class="timeline">
+                @foreach (var p in _pedidos)
+                {
+                    <li>
+                        <div class="fecha">
+                            @Textos.Fecha(p.Fecha) · <a href="/admin/obras/@p.ObraId">@p.Obra.Codigo</a> ·
+                            <a href="/admin/albaniles/@p.AlbanilId">@p.Albanil.Nombre</a>@(p.Capataz is null ? "" : $" (cuadrilla de {p.Capataz.Nombre})")
+                            @if (p.Tarea is not null) { <span> · para @p.Tarea.Titulo</span> }
+                        </div>
+                        @if (p.Urgente) { <span class="chip chip-alerta">urgente</span> }
+                        <span class="@Textos.ClaseEstado(p.Estado)">@Textos.Etiqueta(p.Estado)</span>
+                        <ul style="margin:.25rem 0 0 1rem">
+                            @foreach (var i in p.Items.OrderBy(i => i.Id))
+                            {
+                                var recibido = _recibido.GetValueOrDefault(i.Id);
+                                <li>
+                                    <strong>@Textos.Numero(i.Cantidad) @i.Unidad</strong> @i.Material
+                                    @if (recibido > 0) { <span class="@(recibido >= i.Cantidad ? "chip chip-ok" : "chip chip-alerta")">llegó @Textos.Numero(recibido)</span> }
+                                </li>
+                            }
+                        </ul>
+                        @if (p.Nota is not null) { <div class="muted">Nota: @p.Nota</div> }
+                        @if (p.Respuesta is not null) { <div class="muted">Respuesta: @p.Respuesta</div> }
+                        <div class="toolbar" style="margin:.5rem 0 0">
+                            <input placeholder="Respuesta (ej. llega el jueves)" maxlength="1000" @bind="_respPedido[p.Id]" />
+                            @if (p.Estado == EstadoPedido.Pendiente)
+                            {
+                                <button class="btn btn-sm" @onclick="() => Pedido(p.Id, EstadoPedido.Aprobado)">Aprobar</button>
+                                <button class="btn btn-sm btn-outline" @onclick="() => Pedido(p.Id, EstadoPedido.Rechazado)">Rechazar</button>
+                            }
+                            @if (p.Estado is EstadoPedido.Pendiente or EstadoPedido.Aprobado or EstadoPedido.EntregaParcial)
+                            {
+                                <button class="btn btn-sm btn-outline" @onclick="() => Pedido(p.Id, EstadoPedido.Entregado)">Entregado</button>
+                            }
+                            @if (p.Estado is EstadoPedido.Rechazado or EstadoPedido.Entregado)
+                            {
+                                <button class="btn-link" @onclick="() => Pedido(p.Id, EstadoPedido.Pendiente)">Volver a pendiente</button>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+        break;
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+    [SupplyParameterFromQuery(Name = "obraId")] public int? ObraId { get; set; }
+
+    private record ObraOpcion(int Id, string Codigo, string Nombre);
+
+    private string _tab = "pedidos";
+    private int? _obraId;
+    private List<ObraOpcion> _obras = [];
+    private List<PedidoMaterial> _pedidos = [];
+    private List<ProblemaObra> _problemas = [];
+    private List<JornadaAlbanil> _jornadas = [];
+    private List<ParteDiario> _partes = [];
+    // Respuesta escrita para cada pedido / problema (se manda al cambiarle el estado).
+    private Dictionary<int, string?> _respPedido = [], _respProblema = [];
+    private bool _soloAbiertos = true;
+    private List<ValidacionAvances.Pendiente> _pendientes = [];
+    private List<RecepcionMaterial> _recepciones = [];
+    private Dictionary<int, decimal> _recibido = [];
+    private Dictionary<int, decimal?> _correccion = [];
+    private Dictionary<int, string?> _motivo = [];
+    private int _porValidar;
+    private int _pedidosPendientes, _problemasAbiertos;
+    private string? _mensaje;
+
+    private string Pestania(string tab) => _tab == tab ? "btn btn-sm" : "btn btn-sm btn-outline";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _tab = Tab is "validar" or "problemas" or "recepciones" or "asistencia" or "partes" ? Tab : "pedidos";
+        _obraId = ObraId;
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            _obras = await db.Obras.AsNoTracking()
+                .Where(o => db.AlbanilObras.Any(a => a.ObraId == o.Id) || o.Id == ObraId)
+                .OrderBy(o => o.Nombre).Select(o => new ObraOpcion(o.Id, o.Codigo, o.Nombre)).ToListAsync();
+        }
+        await CargarAsync();
+    }
+
+    private void Ir(string tab)
+    {
+        _mensaje = null;
+        Nav.NavigateTo(Nav.GetUriWithQueryParameters(new Dictionary<string, object?> { ["tab"] = tab, ["obraId"] = _obraId }));
+    }
+
+    private void CambiarObra() =>
+        Nav.NavigateTo(Nav.GetUriWithQueryParameters(new Dictionary<string, object?> { ["tab"] = _tab, ["obraId"] = _obraId }));
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var obra = _obraId;
+        _pedidosPendientes = await db.Pedidos.CountAsync(p => p.Estado == EstadoPedido.Pendiente && (obra == null || p.ObraId == obra));
+        _problemasAbiertos = await db.Problemas.CountAsync(p => p.Estado != EstadoProblema.Resuelto && (obra == null || p.ObraId == obra));
+        var desde = DateTime.UtcNow.AddDays(-14);
+
+        _porValidar = await Validacion.CantidadPendientesAsync(obra);
+        switch (_tab)
+        {
+            case "validar":
+                _pendientes = await Validacion.PendientesAsync(obra);
+                _correccion = _pendientes.ToDictionary(p => p.RegistroId, p => _correccion.GetValueOrDefault(p.RegistroId));
+                _motivo = _pendientes.ToDictionary(p => p.RegistroId, p => _motivo.GetValueOrDefault(p.RegistroId));
+                break;
+            case "recepciones":
+                var hace30 = DateTime.UtcNow.AddDays(-30);
+                _recepciones = await db.Recepciones.AsNoTracking()
+                    .Include(r => r.Obra).Include(r => r.Albanil).Include(r => r.Capataz).Include(r => r.Items)
+                    .Include(r => r.Registro).ThenInclude(x => x!.Medios)
+                    .Where(r => (obra == null || r.ObraId == obra) && r.Fecha > hace30)
+                    .OrderByDescending(r => r.Fecha).Take(100).AsSplitQuery().ToListAsync();
+                break;
+            case "problemas":
+                // La urgencia se guarda como texto: se ordena en memoria (Alta primero).
+                _problemas = (await db.Problemas.AsNoTracking()
+                        .Include(p => p.Obra).Include(p => p.Albanil).Include(p => p.Capataz).Include(p => p.Tarea)
+                        .Include(p => p.Registro).ThenInclude(r => r!.Medios)
+                        .Where(p => (obra == null || p.ObraId == obra) && (!_soloAbiertos || p.Estado != EstadoProblema.Resuelto))
+                        .OrderByDescending(p => p.Fecha).Take(100)
+                        .AsSplitQuery().ToListAsync())
+                    .OrderBy(p => p.Estado == EstadoProblema.Resuelto).ThenByDescending(p => p.Urgencia).ThenByDescending(p => p.Fecha)
+                    .ToList();
+                _respProblema = _problemas.ToDictionary(p => p.Id, p => _respProblema.GetValueOrDefault(p.Id));
+                break;
+            case "asistencia":
+                _jornadas = await db.Jornadas.AsNoTracking().Include(j => j.Obra).Include(j => j.Albanil)
+                    .Where(j => (obra == null || j.ObraId == obra) && j.Entrada > desde)
+                    .OrderByDescending(j => j.Entrada).Take(500).ToListAsync();
+                break;
+            case "partes":
+                var dia = DateOnly.FromDateTime(Textos.AHoraLocal(desde));
+                _partes = await db.Partes.AsNoTracking()
+                    .Include(p => p.Obra).Include(p => p.Albanil).Include(p => p.Items).ThenInclude(i => i.Tarea)
+                    .Where(p => (obra == null || p.ObraId == obra) && p.Fecha >= dia)
+                    .OrderByDescending(p => p.Fecha).ThenBy(p => p.Albanil.Nombre).Take(200)
+                    .AsSplitQuery().ToListAsync();
+                break;
+            default:
+                _pedidos = await db.Pedidos.AsNoTracking()
+                    .Include(p => p.Obra).Include(p => p.Albanil).Include(p => p.Capataz).Include(p => p.Tarea).Include(p => p.Items)
+                    .Where(p => (obra == null || p.ObraId == obra)
+                        && (!_soloAbiertos || p.Estado == EstadoPedido.Pendiente || p.Estado == EstadoPedido.Aprobado || p.Estado == EstadoPedido.EntregaParcial))
+                    .OrderByDescending(p => p.Urgente).ThenByDescending(p => p.Fecha).Take(100)
+                    .AsSplitQuery().ToListAsync();
+                _respPedido = _pedidos.ToDictionary(p => p.Id, p => _respPedido.GetValueOrDefault(p.Id));
+                var itemIds = _pedidos.SelectMany(p => p.Items).Select(i => i.Id).ToList();
+                _recibido = (await db.RecepcionItems.AsNoTracking().Where(i => i.PedidoMaterialItemId != null && itemIds.Contains(i.PedidoMaterialItemId.Value))
+                        .Select(i => new { Id = i.PedidoMaterialItemId!.Value, i.Cantidad }).ToListAsync())
+                    .GroupBy(i => i.Id).ToDictionary(g => g.Key, g => g.Sum(i => i.Cantidad));
+                break;
+        }
+    }
+
+    private async Task Validar(ValidacionAvances.Pendiente v, EstadoValidacion decision)
+    {
+        var valor = _correccion.GetValueOrDefault(v.RegistroId);
+        var error = await Validacion.ValidarAsync(v.RegistroId, decision,
+            cantidad: v.Unidad is not null ? valor : null, porcentaje: v.Unidad is null && valor is not null ? (int)Math.Round(valor.Value) : null,
+            motivo: _motivo.GetValueOrDefault(v.RegistroId));
+        _mensaje = error ?? $"Avance {(decision == EstadoValidacion.Rechazado ? "rechazado" : decision == EstadoValidacion.Corregido ? "corregido" : "aprobado")}. El albañil lo ve en su app.";
+        await CargarAsync();
+    }
+
+    private async Task AprobarTodos()
+    {
+        var n = await Validacion.AprobarTodosAsync(null, _obraId);
+        _mensaje = $"Aprobados {n} avance(s).";
+        await CargarAsync();
+    }
+
+    private async Task Pedido(int id, EstadoPedido estado)
+    {
+        await CampoSvc.CambiarEstadoPedidoAsync(id, estado, _respPedido.GetValueOrDefault(id));
+        _respPedido.Remove(id);
+        _mensaje = $"Pedido marcado como {Textos.Etiqueta(estado).ToLowerInvariant()}. El albañil lo ve en su app.";
+        await CargarAsync();
+    }
+
+    private async Task Problema(int id, EstadoProblema estado)
+    {
+        await CampoSvc.CambiarEstadoProblemaAsync(id, estado, _respProblema.GetValueOrDefault(id));
+        _respProblema.Remove(id);
+        _mensaje = $"Problema marcado como {Textos.Etiqueta(estado).ToLowerInvariant()}. El albañil lo ve en su app.";
+        await CargarAsync();
+    }
+}

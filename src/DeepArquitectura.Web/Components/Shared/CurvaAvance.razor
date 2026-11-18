@@ -1,0 +1,44 @@
+@* Curva de avance: plan (punteado) vs. real aprobado (línea llena), en % de la obra. SVG puro: sirve en el panel y en el portal. *@
+@if (Puntos.Count > 0)
+{
+    <svg viewBox="0 0 @Ancho @Alto" role="img" aria-label="Avance planificado contra real" style="width:100%;height:auto;max-height:260px">
+        @for (var p = 0; p <= 100; p += 25)
+        {
+            <g>
+                <line x1="@Izq" x2="@(Ancho - Der)" y1="@Y(p)" y2="@Y(p)" stroke="#E6DCD2" stroke-width="1" />
+                <text x="@(Izq - 6)" y="@YTexto(p)" text-anchor="end" font-size="11" fill="#8D6E63">@p%</text>
+            </g>
+        }
+        @if (HoyEnRango)
+        {
+            <g>
+                <line x1="@X(Hoy)" x2="@X(Hoy)" y1="@Arriba" y2="@(Alto - Abajo)" stroke="#B26A00" stroke-dasharray="2 3" stroke-width="1" />
+                <text x="@X(Hoy)" y="@(Arriba - 4)" text-anchor="middle" font-size="11" fill="#B26A00">hoy</text>
+            </g>
+        }
+        <polyline points="@Linea(Puntos.Select(p => (p.Fecha, (decimal?)p.Plan)))" fill="none" stroke="#8D6E63" stroke-width="2" stroke-dasharray="6 4" />
+        <polyline points="@Linea(Puntos.Where(p => p.Real is not null).Select(p => (p.Fecha, p.Real)))" fill="none" stroke="#2E7D32" stroke-width="3" />
+        <text x="@Izq" y="@(Alto - 6)" font-size="11" fill="#8D6E63">@Puntos[0].Fecha.ToString("dd/MM")</text>
+        <text x="@(Ancho - Der)" y="@(Alto - 6)" text-anchor="end" font-size="11" fill="#8D6E63">@Puntos[^1].Fecha.ToString("dd/MM")</text>
+    </svg>
+    <div style="display:flex;gap:1rem;font-size:.8rem;color:#8D6E63">
+        <span><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="#8D6E63" stroke-width="2" stroke-dasharray="6 4" /></svg> planificado</span>
+        <span><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="#2E7D32" stroke-width="3" /></svg> real (aprobado)</span>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<AvanceObra.PuntoCurva> Puntos { get; set; } = [];
+
+    private const int Ancho = 640, Alto = 240, Izq = 42, Der = 12, Arriba = 18, Abajo = 26;
+    private static DateOnly Hoy => Textos.HoyLocal();
+    private int Dias => Math.Max(1, Puntos[^1].Fecha.DayNumber - Puntos[0].Fecha.DayNumber);
+    private bool HoyEnRango => Hoy >= Puntos[0].Fecha && Hoy <= Puntos[^1].Fecha;
+
+    private string X(DateOnly d) => Fmt(Izq + (double)(d.DayNumber - Puntos[0].Fecha.DayNumber) / Dias * (Ancho - Izq - Der));
+    private static string Y(decimal p) => Fmt(Alto - Abajo - (double)Math.Clamp(p, 0, 100) / 100 * (Alto - Arriba - Abajo));
+    private static string YTexto(int p) => Fmt(double.Parse(Y(p), System.Globalization.CultureInfo.InvariantCulture) + 4);
+    private static string Fmt(double v) => v.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    private string Linea(IEnumerable<(DateOnly Fecha, decimal? Valor)> serie) =>
+        string.Join(' ', serie.Where(s => s.Valor is not null).Select(s => $"{X(s.Fecha)},{Y(s.Valor!.Value)}"));
+}

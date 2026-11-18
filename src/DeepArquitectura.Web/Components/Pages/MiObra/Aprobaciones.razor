@@ -1,0 +1,43 @@
+@page "/mi-obra/aprobaciones"
+@inherits PaginaCliente
+@inject AppCliente App
+
+<PageTitle>Aprobaciones | Mi obra</PageTitle>
+
+<a class="volver" href="/mi-obra/mas">‹ Más</a>
+<h1>Aprobaciones</h1>
+<p class="suave">Decisiones que el estudio necesita que tomes: terminaciones, cambios o adicionales. Queda registrado quién respondió y cuándo.</p>
+
+@if (_lista.Count == 0)
+{
+    <p class="vacio">No hay nada para aprobar por ahora.</p>
+}
+<ul class="lista">
+    @foreach (var a in _lista)
+    {
+        <li>
+            <a class="fila-enlace" href="/mi-obra/aprobaciones/@a.Id">
+                <div>
+                    <strong>@a.Titulo</strong>
+                    <span class="suave chico">
+                        @if (a.Estado == EstadoAprobacion.Pendiente)
+                        {
+                            @(a.FechaLimite is DateOnly f ? $"Responder antes del {Textos.Fecha(f)}" : "Esperando tu respuesta")
+                        }
+                        else
+                        {
+                            @($"{(a.Estado == EstadoAprobacion.Aprobada ? "Aprobada" : "No aprobada")}{(a.OpcionElegida is null ? "" : $": {a.OpcionElegida}")} · {a.RespondidoPor} · {Textos.Dia(a.RespondidoEn!.Value)}")
+                        }
+                    </span>
+                </div>
+                <span class="@Textos.ClaseEstado(a.Estado)">@(a.Estado == EstadoAprobacion.Rechazada ? "No aprobada" : Textos.Etiqueta(a.Estado))</span>
+            </a>
+        </li>
+    }
+</ul>
+
+@code {
+    private List<AprobacionCliente> _lista = [];
+
+    protected override async Task CargarAsync() => _lista = await App.AprobacionesAsync(ObraId);
+}

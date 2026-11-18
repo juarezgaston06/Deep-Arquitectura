@@ -1,0 +1,28 @@
+@page "/mi-obra/compartir"
+@inherits PaginaCliente
+@inject Postventa Svc
+
+<PageTitle>Compartir tu obra | Mi obra</PageTitle>
+
+<a class="volver" href="/mi-obra/mas">‹ Más</a>
+<h1>¿Podemos mostrar tu obra?</h1>
+<p class="suave">Nos ayuda mucho mostrar trabajos reales en nuestras redes y en la web. Vos decidís qué se puede usar, y lo podés cambiar cuando quieras.</p>
+
+<AvisoPantalla />
+
+<form method="post" action="/mi-obra/permiso" class="tarjeta escribir">
+    <AntiforgeryToken />
+    <label><input type="checkbox" name="fotos" value="si" checked="@(_p?.UsarFotos == true)" /> Pueden usar fotos y videos de la obra (sin mostrar la dirección)</label>
+    <label for="testimonio">Unas palabras sobre tu experiencia (opcional)</label>
+    <textarea id="testimonio" name="testimonio" rows="4" maxlength="2000" placeholder="Ej.: Cumplieron los plazos y siempre supe en qué estaba la obra.">@_p?.Testimonio</textarea>
+    <label><input type="checkbox" name="mostrar-nombre" value="si" checked="@(_p?.MostrarNombre == true)" /> Pueden poner mi nombre junto al comentario (si no, va anónimo)</label>
+    <label for="nombre">Tu nombre</label>
+    <input id="nombre" name="nombre" maxlength="120" required autocomplete="name" data-recordar="nombre" value="@_p?.Nombre" />
+    <button type="submit" class="boton">Guardar</button>
+    @if (_p is not null) { <p class="suave chico">Última vez: @Textos.Fecha(_p.ActualizadoEn). Para retirar el permiso, destildá y guardá.</p> }
+</form>
+
+@code {
+    private PermisoDifusion? _p;
+    protected override async Task CargarAsync() => _p = await Svc.PermisoAsync(ObraId);
+}

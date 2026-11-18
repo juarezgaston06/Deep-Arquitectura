@@ -1,0 +1,114 @@
+@page "/admin/rendimientos"
+@rendermode InteractiveServer
+@inject AvanceObra Avance
+
+<PageTitle>Rendimientos | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Rendimientos reales</h1>
+        <p>Cantidad <strong>aprobada</strong> de cada tarea dividida por las horas cargadas en los partes diarios. Para presupuestar con datos propios.</p>
+    </div>
+</div>
+
+<div class="toolbar">
+    <select @bind="_obraId" @bind:after="CargarAsync">
+        <option value="">Todas las obras</option>
+        @foreach (var o in _obras) { <option value="@o.Id">@o.Codigo · @o.Nombre</option> }
+    </select>
+    <select @bind="_periodo" @bind:after="CargarAsync">
+        <option value="0">Desde siempre</option>
+        <option value="30">Últimos 30 días</option>
+        <option value="90">Últimos 90 días</option>
+        <option value="365">Último año</option>
+    </select>
+</div>
+
+@if (_res is null)
+{
+    <p class="muted">Cargando…</p>
+}
+else
+{
+    <div class="card">
+        <h2>Por rubro</h2>
+        @if (_res.PorRubro.Count == 0)
+        {
+            <p class="empty">Todavía no hay datos: hace falta que las tareas tengan unidad, que los avances estén aprobados y que la cuadrilla cargue las horas en el parte diario.</p>
+        }
+        else
+        {
+            <table>
+                <thead><tr><th>Rubro</th><th style="text-align:right">Obras</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Horas</th><th style="text-align:right">Por hora</th><th style="text-align:right">Por jornada (8 h)</th></tr></thead>
+                <tbody>
+                    @foreach (var r in _res.PorRubro)
+                    {
+                        <tr>
+                            <td><strong>@r.Rubro</strong></td>
+                            <td style="text-align:right">@r.Obras</td>
+                            <td style="text-align:right">@Textos.Numero(r.Cantidad) @r.Unidad</td>
+                            <td style="text-align:right">@Textos.Numero(r.Horas)</td>
+                            <td style="text-align:right">@(r.PorHora is null ? "—" : $"{Textos.Numero(r.PorHora.Value)} {r.Unidad}")</td>
+                            <td style="text-align:right"><strong>@(r.PorJornada is null ? "—" : $"{Textos.Numero(r.PorJornada.Value)} {r.Unidad}")</strong></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        @if (_res.TareasSinHoras > 0)
+        {
+            <p class="muted" style="margin-top:.5rem">@_res.TareasSinHoras tarea(s) con avance aprobado pero sin horas en los partes: no entran.</p>
+        }
+        <p class="muted" style="font-size:.85rem">Las tareas se agrupan por «Rubro» (cargalo en cada tarea para comparar entre obras); sin rubro, por el título.</p>
+    </div>
+
+    @if (_res.PorPersona.Count > 0)
+    {
+        <div class="card">
+            <h2>Por persona</h2>
+            <table>
+                <thead><tr><th>Rubro</th><th>Persona</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Horas</th><th style="text-align:right">Por jornada</th><th>vs. promedio</th></tr></thead>
+                <tbody>
+                    @foreach (var p in _res.PorPersona)
+                    {
+                        var promedio = _res.PorRubro.FirstOrDefault(r => r.Rubro == p.Rubro && r.Unidad == p.Unidad)?.PorJornada;
+                        <tr>
+                            <td>@p.Rubro</td>
+                            <td><a href="/admin/albaniles/@p.AlbanilId">@p.Albanil</a></td>
+                            <td style="text-align:right">@Textos.Numero(p.Cantidad) @p.Unidad</td>
+                            <td style="text-align:right">@Textos.Numero(p.Horas)</td>
+                            <td style="text-align:right">@(p.PorJornada is null ? "—" : $"{Textos.Numero(p.PorJornada.Value)} {p.Unidad}")</td>
+                            <td>
+                                @if (promedio is > 0 && p.PorJornada is decimal pj)
+                                {
+                                    var dif = (int)Math.Round((pj / promedio.Value - 1) * 100);
+                                    <span class="@(dif >= 0 ? "chip chip-ok" : "chip chip-alerta")">@(dif >= 0 ? "+" : "")@dif%</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <p class="muted" style="font-size:.85rem">Ojo al comparar personas: un ayudante suma horas a la tarea sin sumar cantidad propia.</p>
+        </div>
+    }
+}
+
+@code {
+    private record ObraOpcion(int Id, string Codigo, string Nombre);
+    private List<ObraOpcion> _obras = [];
+    private int? _obraId;
+    private int _periodo;
+    private AvanceObra.ResultadoRendimientos? _res;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using (var db = await DbFactory.CreateDbContextAsync())
+            _obras = await db.Obras.AsNoTracking().Where(o => db.Tareas.Any(t => t.ObraId == o.Id && t.Unidad != null))
+                .OrderBy(o => o.Nombre).Select(o => new ObraOpcion(o.Id, o.Codigo, o.Nombre)).ToListAsync();
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync() =>
+        _res = await Avance.RendimientosAsync(_obraId, _periodo == 0 ? null : Textos.HoyLocal().AddDays(-_periodo));
+}

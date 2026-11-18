@@ -1,0 +1,173 @@
+@page "/admin/clientes/nuevo"
+@page "/admin/clientes/{Id:int}"
+@rendermode InteractiveServer
+
+<PageTitle>@(EsNuevo ? "Nuevo cliente" : _cliente?.Nombre) | Deep Arquitectura</PageTitle>
+
+@if (_cliente is null)
+{
+    <p class="muted">@(_noEncontrado ? "Cliente no encontrado." : "Cargando…")</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>@(EsNuevo ? "Nuevo cliente" : _cliente.Nombre)</h1>
+            @if (!EsNuevo)
+            {
+                <p>Cliente desde @Textos.Fecha(_cliente.CreadoEn)</p>
+            }
+        </div>
+        @if (!EsNuevo)
+        {
+            <a class="btn btn-outline" href="/admin/presupuestos/nuevo?clienteId=@Id">+ Presupuesto</a>
+            <a class="btn" href="/admin/obras/nueva?clienteId=@Id">+ Nueva obra</a>
+        }
+    </div>
+
+    @if (_mensaje is not null)
+    {
+        <div class="alert alert-ok">@_mensaje</div>
+    }
+
+    <div class="card">
+        <EditForm Model="_cliente" OnValidSubmit="GuardarAsync" FormName="cliente">
+            <div class="form-grid">
+                <div class="field">
+                    <label>Nombre y apellido / Razón social *</label>
+                    <InputText @bind-Value="_cliente.Nombre" required maxlength="200" />
+                </div>
+                <div class="field">
+                    <label>Teléfono / WhatsApp</label>
+                    <InputText @bind-Value="_cliente.Telefono" maxlength="50" />
+                </div>
+                <div class="field">
+                    <label>Email</label>
+                    <InputText type="email" @bind-Value="_cliente.Email" maxlength="200" />
+                </div>
+                <div class="field">
+                    <label>DNI / CUIT</label>
+                    <InputText @bind-Value="_cliente.DniCuit" maxlength="20" />
+                </div>
+                <div class="field">
+                    <label>Dirección</label>
+                    <InputText @bind-Value="_cliente.Direccion" maxlength="300" />
+                </div>
+                <div class="field">
+                    <label>Localidad</label>
+                    <InputText @bind-Value="_cliente.Localidad" maxlength="120" />
+                </div>
+                <div class="field">
+                    <label>¿Cómo nos conoció?</label>
+                    <InputSelect @bind-Value="_cliente.Origen">
+                        @foreach (var o in Enum.GetValues<OrigenCliente>())
+                        {
+                            <option value="@o">@o</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="field full">
+                    <label>Notas</label>
+                    <InputTextArea @bind-Value="_cliente.Notas" rows="3" maxlength="4000" />
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn" type="submit" disabled="@string.IsNullOrWhiteSpace(_cliente.Nombre)">Guardar</button>
+                <a href="/admin/clientes">Volver</a>
+            </div>
+        </EditForm>
+    </div>
+
+    @if (!EsNuevo)
+    {
+        <div class="grid-2">
+            <div class="card">
+                <h2>Obras</h2>
+                @if (_cliente.Obras.Count == 0)
+                {
+                    <p class="empty">Sin obras todavía.</p>
+                }
+                else
+                {
+                    <table>
+                        <tbody>
+                            @foreach (var o in _cliente.Obras.OrderByDescending(o => o.CreadoEn))
+                            {
+                                <tr>
+                                    <td><a href="/admin/obras/@o.Id">@o.Nombre</a><div class="muted">@o.Codigo · @Textos.Etiqueta(o.Servicio)</div></td>
+                                    <td><span class="@Textos.ClaseEstado(o.Estado)">@Textos.Etiqueta(o.Estado)</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            <div class="card">
+                <h2>Consultas desde la web</h2>
+                @if (_cliente.Consultas.Count == 0)
+                {
+                    <p class="empty">Sin consultas vinculadas.</p>
+                }
+                else
+                {
+                    <ul class="timeline">
+                        @foreach (var q in _cliente.Consultas.OrderByDescending(q => q.CreadoEn))
+                        {
+                            <li><div class="fecha">@Textos.Fecha(q.CreadoEn) · @Textos.Etiqueta(q.Area)</div>@q.Mensaje</li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private Cliente? _cliente;
+    private bool _noEncontrado;
+    private string? _mensaje;
+    private bool EsNuevo => Id is null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _mensaje = null;
+        if (EsNuevo)
+        {
+            _cliente = new Cliente { Origen = OrigenCliente.WhatsApp };
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _cliente = await db.Clientes.AsNoTracking()
+            .Include(c => c.Obras).Include(c => c.Consultas)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(c => c.Id == Id);
+        _noEncontrado = _cliente is null;
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (_cliente is null || string.IsNullOrWhiteSpace(_cliente.Nombre)) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (EsNuevo)
+        {
+            db.Clientes.Add(_cliente);
+            await db.SaveChangesAsync();
+            Nav.NavigateTo($"/admin/clientes/{_cliente.Id}");
+            return;
+        }
+
+        var entidad = await db.Clientes.SingleAsync(c => c.Id == _cliente.Id);
+        entidad.Nombre = _cliente.Nombre.Trim();
+        entidad.Telefono = _cliente.Telefono;
+        entidad.Email = _cliente.Email;
+        entidad.DniCuit = _cliente.DniCuit;
+        entidad.Direccion = _cliente.Direccion;
+        entidad.Localidad = _cliente.Localidad;
+        entidad.Origen = _cliente.Origen;
+        entidad.Notas = _cliente.Notas;
+        await db.SaveChangesAsync();
+        _mensaje = "Cambios guardados.";
+    }
+}

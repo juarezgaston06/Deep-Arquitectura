@@ -1,0 +1,275 @@
+@page "/admin/aranceles/nueva"
+@page "/admin/aranceles/{Id:int}"
+@rendermode InteractiveServer
+@inject PresupuestoService Servicio
+
+<PageTitle>@(EsNueva ? "Nueva escala" : _datos.Nombre) | Deep Arquitectura</PageTitle>
+
+@if (_cargando)
+{
+    <p class="muted">Cargando…</p>
+}
+else if (_arancel is null)
+{
+    <p class="muted">Escala no encontrada. <a href="/admin/aranceles">Volver</a></p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>@(EsNueva ? "Nueva escala arancelaria" : _datos.Nombre)</h1>
+            <p>Copiá los valores del PDF del Colegio. Los montos van sin puntos (ej. 741000).</p>
+        </div>
+        <div class="form-actions" style="margin:0">
+            <button class="btn" @onclick="GuardarAsync" disabled="@_guardando">@(EsNueva ? "Crear versión" : "Guardar cambios")</button>
+            <a href="/admin/aranceles">Volver</a>
+        </div>
+    </div>
+
+    @if (_mensaje is not null) { <div class="alert alert-ok">@_mensaje</div> }
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+    @if (!EsNueva && _usos > 0)
+    {
+        <div class="alert alert-info">
+            @_usos presupuesto(s) usan esta versión. Lo ya emitido no cambia, pero si los reabrís se recalculan con estos valores.
+            Para un semestre nuevo conviene <a href="/admin/aranceles/nueva?desde=@Id">crear otra versión</a>.
+        </div>
+    }
+
+    <div class="card">
+        <h2>Versión</h2>
+        <div class="form-grid">
+            <div class="field full"><label>Nombre</label><input @bind="_datos.Nombre" maxlength="200" placeholder="Ej: Colegio MMO Regional 1 — 2º semestre 2026" /></div>
+            <div class="field"><label>Vigente desde</label><input type="date" @bind="_datos.VigenteDesde" /></div>
+            <div class="field"><label>Vigente hasta</label><input type="date" @bind="_datos.VigenteHasta" /></div>
+            <div class="field"><label>Valor básico ($)</label><input type="number" min="0" step="any" @bind="_arancel.ValorBasico" /></div>
+            <div class="field full"><label>Notas</label><input @bind="_datos.Notas" maxlength="2000" placeholder="Origen del dato, resolución, etc." /></div>
+        </div>
+        @if (_valorBasicoOriginal > 0 && _arancel.ValorBasico > 0 && _arancel.ValorBasico != _valorBasicoOriginal)
+        {
+            var factor = _arancel.ValorBasico / _valorBasicoOriginal;
+            <div class="alert alert-info" style="margin-top:1rem;margin-bottom:0">
+                El valor básico cambió de @Textos.Moneda(_valorBasicoOriginal) a @Textos.Moneda(_arancel.ValorBasico) (×@factor.ToString("0.0000")).
+                <button class="btn btn-sm" @onclick="EscalarMontos">Actualizar todos los montos en la misma proporción</button>
+                <div class="muted" style="margin-top:.35rem">Límites de tramos, mínimos y valores fijos. Después revisalos contra el PDF.</div>
+            </div>
+        }
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <h2>Valores fijos</h2>
+            <div class="form-grid">
+                <div class="field"><label>Día en gabinete</label><input type="number" step="any" @bind="_arancel.Fijos.DiaGabinete" /></div>
+                <div class="field"><label>Día en terreno (primeros 10)</label><input type="number" step="any" @bind="_arancel.Fijos.DiaTerrenoPrimeros10" /></div>
+                <div class="field"><label>Día en terreno (siguientes 20)</label><input type="number" step="any" @bind="_arancel.Fijos.DiaTerrenoSiguientes20" /></div>
+                <div class="field"><label>Día en terreno (más de 30)</label><input type="number" step="any" @bind="_arancel.Fijos.DiaTerrenoExceso" /></div>
+                <div class="field"><label>Día de viaje</label><input type="number" step="any" @bind="_arancel.Fijos.DiaViaje" /></div>
+                <div class="field"><label>Diligenciamiento (art. 58)</label><input type="number" step="any" @bind="_arancel.Fijos.Diligenciamiento" /></div>
+                <div class="field"><label>Consulta sin inspección</label><input type="number" step="any" @bind="_arancel.Fijos.ConsultaSinInspeccion" /></div>
+                <div class="field"><label>Consulta con inspección</label><input type="number" step="any" @bind="_arancel.Fijos.ConsultaConInspeccion" /></div>
+                <div class="field"><label>Carpeta de liquidación</label><input type="number" step="any" @bind="_arancel.Fijos.Carpeta" /></div>
+                <div class="field"><label>Arancel administrativo</label><input type="number" step="any" @bind="_arancel.Fijos.ArancelAdministrativo" /></div>
+            </div>
+        </div>
+        <div class="card">
+            <h2>Porcentajes</h2>
+            <div class="form-grid">
+                <div class="field"><label>Croquis (art. 79)</label><input type="number" step="any" @bind="_arancel.Art79.Croquis" /></div>
+                <div class="field"><label>Anteproyecto</label><input type="number" step="any" @bind="_arancel.Art79.Anteproyecto" /></div>
+                <div class="field"><label>Proyecto sin detalles</label><input type="number" step="any" @bind="_arancel.Art79.ProyectoSinDetalles" /></div>
+                <div class="field"><label>Proyecto con detalles</label><input type="number" step="any" @bind="_arancel.Art79.ProyectoConDetalles" /></div>
+                <div class="field"><label>Dirección técnica</label><input type="number" step="any" @bind="_arancel.Art79.DireccionTecnica" /></div>
+                <div class="field"><label>Recargo 1ª categoría</label><input type="number" step="any" @bind="_arancel.RecargoPrimeraCategoriaPct" /></div>
+                <div class="field"><label>Reducción comitente privado (art. 117)</label><input type="number" step="any" @bind="_arancel.ReduccionComitentePrivadoPct" /></div>
+                <div class="field"><label>Conducción técnica (Res. 909)</label><input type="number" step="any" @bind="_arancel.ConduccionTecnicaPct" /></div>
+            </div>
+        </div>
+    </div>
+
+    @foreach (var (titulo, escala) in EscalasEditables)
+    {
+        <div class="card">
+            <h2>@titulo</h2>
+            <p class="muted" style="margin-bottom:.5rem">Escala progresiva: cada porción del monto paga el % de su tramo. «Hasta» vacío = en adelante.</p>
+            <table class="tabla-edit">
+                <thead>
+                    <tr>
+                        <th style="width:200px">Hasta ($)</th>
+                        @foreach (var c in escala.Clases) { <th>@c (%)</th> }
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in escala.Tramos)
+                    {
+                        <tr>
+                            <td><input type="number" step="any" @bind="t.Hasta" placeholder="en adelante" /></td>
+                            @for (var i = 0; i < escala.Clases.Count; i++)
+                            {
+                                var idx = i;
+                                <td><input type="number" step="any" @bind="t.Porcentajes[idx]" /></td>
+                            }
+                            <td class="acciones"><button class="btn-link btn-danger" @onclick="() => escala.Tramos.Remove(t)">Quitar</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="toolbar" style="margin:.75rem 0 0">
+                <button class="btn btn-sm btn-outline" @onclick="() => escala.Tramos.Add(new() { Porcentajes = [.. escala.Clases.Select(_ => 0m)] })">+ Tramo</button>
+                <label style="font-size:.85rem">Mínimo ($)</label>
+                <input type="number" step="any" @bind="escala.Minimo" style="min-width:140px;width:160px" />
+            </div>
+        </div>
+    }
+
+    <div class="card">
+        <h2>Tabla de valores según uso y destino</h2>
+        <p class="muted" style="margin-bottom:.5rem">Coeficiente vacío = «por presupuesto». El destino define la alícuota del registro diferenciado.</p>
+        <table class="tabla-edit">
+            <thead><tr><th style="width:80px">Código</th><th style="width:220px">Grupo</th><th>Descripción</th><th style="width:90px">Coef.</th><th style="width:130px">Destino</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var u in _arancel.Usos)
+                {
+                    <tr>
+                        <td><input @bind="u.Codigo" maxlength="10" /></td>
+                        <td><input @bind="u.Grupo" /></td>
+                        <td><input @bind="u.Descripcion" /></td>
+                        <td><input type="number" step="0.01" @bind="u.Coeficiente" /></td>
+                        <td>
+                            <select @bind="u.Destino">
+                                @foreach (var d in Enum.GetValues<DestinoRegistro>()) { <option value="@d">@EtiquetaDestino(d)</option> }
+                            </select>
+                        </td>
+                        <td class="acciones"><button class="btn-link btn-danger" @onclick="() => _arancel.Usos.Remove(u)">Quitar</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="toolbar" style="margin:.75rem 0 0">
+            <button class="btn btn-sm btn-outline" @onclick="() => _arancel.Usos.Add(new() { Grupo = _arancel.Usos.LastOrDefault()?.Grupo ?? string.Empty })">+ Uso</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Registro de obra diferenciado</h2>
+        <table class="tabla-edit">
+            <thead><tr><th>Destino</th><th>Hasta (m² totales)</th><th>Alícuota (%)</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var r in _arancel.RegistroDiferenciado)
+                {
+                    <tr>
+                        <td>
+                            <select @bind="r.Destino">
+                                @foreach (var d in Enum.GetValues<DestinoRegistro>()) { <option value="@d">@EtiquetaDestino(d)</option> }
+                            </select>
+                        </td>
+                        <td><input type="number" step="any" @bind="r.HastaM2" placeholder="sin tope" /></td>
+                        <td><input type="number" step="any" @bind="r.Porcentaje" /></td>
+                        <td class="acciones"><button class="btn-link btn-danger" @onclick="() => _arancel.RegistroDiferenciado.Remove(r)">Quitar</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="toolbar" style="margin:.75rem 0 0">
+            <button class="btn btn-sm btn-outline" @onclick="() => _arancel.RegistroDiferenciado.Add(new())">+ Regla</button>
+        </div>
+        <div class="form-grid" style="margin-top:1rem">
+            <div class="field"><label>Varios destinos: tope m²</label><input type="number" step="any" @bind="_arancel.RegistroTopeMultiplesDestinosM2" /></div>
+            <div class="field"><label>Alícuota general (%)</label><input type="number" step="any" @bind="_arancel.RegistroPorcentajeGeneral" /></div>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button class="btn" @onclick="GuardarAsync" disabled="@_guardando">@(EsNueva ? "Crear versión" : "Guardar cambios")</button>
+        <a href="/admin/aranceles">Volver</a>
+    </div>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery] public int? Desde { get; set; }
+
+    private bool EsNueva => Id is null;
+    private ArancelVersion _datos = new();
+    private Arancel? _arancel;
+    private decimal _valorBasicoOriginal;
+    private int _usos;
+    private bool _cargando = true, _guardando;
+    private string? _mensaje, _error;
+
+    private IEnumerable<(string, Escala)> EscalasEditables =>
+    [
+        ("Art. 78 — Proyecto y dirección: arquitectura", _arancel!.ProyectoArquitectura),
+        ("Art. 78 — Proyecto y dirección: ingeniería", _arancel.ProyectoIngenieria),
+        ("Art. 78 — Ingeniería de instalación", _arancel.ProyectoInstalacion),
+        ("Art. 63 — Relevamiento", _arancel.Relevamiento),
+        ("Art. 109 — Informe técnico", _arancel.InformeTecnico),
+        ("Art. 116 — Representación técnica", _arancel.RepresentacionTecnica),
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _cargando = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (EsNueva)
+        {
+            var origen = Desde is int d
+                ? await db.Aranceles.AsNoTracking().FirstOrDefaultAsync(a => a.Id == d)
+                : await db.Aranceles.AsNoTracking().OrderByDescending(a => a.VigenteDesde).FirstOrDefaultAsync();
+            _arancel = origen is null ? ArancelSemilla.Crear() : PresupuestoService.Deserializar<Arancel>(origen.Contenido);
+            // Por defecto, el semestre siguiente al de la versión de origen.
+            var desde = origen?.VigenteHasta.AddDays(1) ?? Textos.HoyLocal();
+            _datos = new ArancelVersion { VigenteDesde = desde, VigenteHasta = desde.AddMonths(6).AddDays(-1), Nombre = "" };
+        }
+        else
+        {
+            var v = await db.Aranceles.AsNoTracking().FirstOrDefaultAsync(a => a.Id == Id);
+            if (v is not null)
+            {
+                _datos = v;
+                _arancel = PresupuestoService.Deserializar<Arancel>(v.Contenido);
+                _usos = await db.Presupuestos.CountAsync(p => p.ArancelVersionId == v.Id);
+            }
+        }
+        // Cada tramo necesita un porcentaje por clase para poder editarlo.
+        foreach (var e in _arancel?.Escalas() ?? [])
+            foreach (var t in e.Tramos)
+                while (t.Porcentajes.Count < e.Clases.Count) t.Porcentajes.Add(0);
+        _valorBasicoOriginal = _arancel?.ValorBasico ?? 0;
+        _cargando = false;
+    }
+
+    private void EscalarMontos()
+    {
+        if (_arancel is null || _valorBasicoOriginal <= 0) return;
+        _arancel.EscalarMontos(_arancel.ValorBasico / _valorBasicoOriginal);
+        _valorBasicoOriginal = _arancel.ValorBasico;
+        _mensaje = "Montos actualizados. Revisalos contra el PDF antes de guardar.";
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (_arancel is null) return;
+        _guardando = true; _error = null; _mensaje = null;
+        try
+        {
+            var v = await Servicio.GuardarArancelAsync(_datos, _arancel);
+            if (EsNueva) { Nav.NavigateTo($"/admin/aranceles/{v.Id}"); return; }
+            _datos = v;
+            _valorBasicoOriginal = _arancel.ValorBasico;
+            _mensaje = "Escala guardada.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _guardando = false; }
+    }
+
+    private static string EtiquetaDestino(DestinoRegistro d) => d switch
+    {
+        DestinoRegistro.Vivienda => "Vivienda",
+        DestinoRegistro.Galpon => "Galpón / tinglado",
+        DestinoRegistro.Comercial => "Local / oficina",
+        DestinoRegistro.Accesorio => "Accesorio (cochera)",
+        _ => "Otro",
+    };
+}

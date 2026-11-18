@@ -1,0 +1,65 @@
+@inherits LayoutComponentBase
+@using DeepArquitectura.Web.Endpoints
+@inject AppCliente App
+
+@* App del cliente: barra superior con la marca y menú inferior de pestañas (como una app del teléfono). *@
+
+<div class="app">
+    <header class="app-top">
+        <a href="/mi-obra/" class="app-marca">
+            <img src="/img/logo.png" alt="" width="34" height="34" />
+            <span>Deep Arquitectura</span>
+        </a>
+    </header>
+
+    <main class="app-main">
+        @Body
+    </main>
+
+    @if (_conSesion)
+    {
+        <nav class="app-tabs" aria-label="Secciones">
+            @foreach (var t in Tabs)
+            {
+                <a href="@t.Href" class="@(Activa(t) ? "activa" : null)" aria-current="@(Activa(t) ? "page" : null)">
+                    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="@t.Icono" /></svg>
+                    <span>@t.Texto</span>
+                    @if (t.Insignia > 0 && !Activa(t)) { <span class="insignia" aria-label="@t.Insignia nuevas">@t.Insignia</span> }
+                </a>
+            }
+        </nav>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext Http { get; set; } = null!;
+
+    private bool _conSesion;
+    private int _mensajes, _aprobaciones;
+
+    private sealed record Tab(string Href, string Icono, string Texto, int Insignia, params string[] Rutas);
+
+    private IEnumerable<Tab> Tabs =>
+    [
+        new("/mi-obra/", "M3 11 12 4l9 7v9h-5v-6H8v6H3z", "Inicio", 0, "/mi-obra", "/mi-obra/"),
+        new("/mi-obra/avance", "M5 20v-8M12 20V5M19 20v-5", "Avance", 0, "/mi-obra/avance"),
+        new("/mi-obra/fotos", "M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01", "Fotos", 0, "/mi-obra/fotos"),
+        new("/mi-obra/mensajes", "M4 5h16v11H9l-5 4z", "Mensajes", _mensajes, "/mi-obra/mensajes"),
+        new("/mi-obra/mas", "M4 7h16M4 12h16M4 17h16", "Más", _aprobaciones, "/mi-obra/mas", "/mi-obra/pagos", "/mi-obra/documentos", "/mi-obra/aprobaciones"),
+    ];
+
+    private bool Activa(Tab t)
+    {
+        var p = Http.Request.Path.Value?.TrimEnd('/') ?? "";
+        return t.Rutas.Any(r => r.TrimEnd('/') == p || (r.Length > "/mi-obra".Length && p.StartsWith(r.TrimEnd('/') + "/", StringComparison.Ordinal)));
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Http.Request.Path.StartsWithSegments(SesionCliente.Entrar)) return;
+        if (await SesionCliente.ObraAsync(Http) is not int obra) return;
+        _conSesion = true;
+        (_aprobaciones, _mensajes) = await App.AvisosAsync(obra);
+    }
+
+}

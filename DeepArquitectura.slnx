@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DeepArquitectura.Contracts/DeepArquitectura.Contracts.csproj" />
+    <Project Path="src/DeepArquitectura.Web/DeepArquitectura.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DeepArquitectura.Tests/DeepArquitectura.Tests.csproj" />
+  </Folder>
+</Solution>

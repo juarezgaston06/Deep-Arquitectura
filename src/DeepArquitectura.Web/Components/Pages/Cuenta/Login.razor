@@ -1,0 +1,62 @@
+@page "/admin/login"
+@layout AdminLayout
+@inject AdminCredentials Credenciales
+@inject NavigationManager Nav
+
+<PageTitle>Ingresar | Deep Arquitectura</PageTitle>
+
+<div class="login-wrap">
+    <form class="login-card" method="post" action="/cuenta/login" data-enhance="false">
+        <AntiforgeryToken />
+        <img src="@Assets["img/logo.png"]" alt="Deep Arquitectura">
+        <h1>Panel del estudio</h1>
+
+        @if (!_configurado)
+        {
+            <div class="alert alert-error">Falta configurar Admin:Usuario y Admin:PasswordHash.</div>
+        }
+        else if (Mensaje is { } m)
+        {
+            <div class="alert @(m.Ok ? "alert-ok" : "alert-error")">@m.Texto</div>
+        }
+
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+        <div class="field">
+            <label for="usuario">Usuario</label>
+            <input id="usuario" name="usuario" autocomplete="username" required autofocus maxlength="100" />
+        </div>
+        <div class="field">
+            <label for="password">Contraseña</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="@AdminCredentials.LargoMaximo" />
+        </div>
+        <button class="btn" type="submit">Ingresar</button>
+    </form>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    [SupplyParameterFromQuery] public string? Salio { get; set; }
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+    private bool _configurado = true;
+
+    private (string Texto, bool Ok)? Mensaje => Error switch
+    {
+        "sesion" => ("El formulario venció (la página estuvo abierta mucho tiempo). Ingresá de nuevo.", false),
+        "limite" => ("Demasiados intentos. Esperá unos minutos y probá otra vez.", false),
+        not null => ("Usuario o contraseña incorrectos.", false),
+        null when Salio is not null => ("Cerraste la sesión.", true),
+        _ => null,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Si ya hay sesión, no tiene sentido mostrar el formulario (antes aparecía dentro del panel).
+        if (AuthState is not null && (await AuthState).User.Identity?.IsAuthenticated == true)
+        {
+            Nav.NavigateTo(Endpoints.PublicEndpoints.DestinoSeguro(ReturnUrl));
+            return;
+        }
+        _configurado = await Credenciales.ConfiguradoAsync();
+    }
+}

@@ -1,0 +1,45 @@
+@page "/admin/app-cliente"
+@rendermode InteractiveServer
+@inject GestionCliente Gestion
+
+<PageTitle>App del cliente | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>App del cliente</h1>
+        <p>Obras con acceso para el cliente (/mi-obra): mensajes sin leer y respuestas a aprobaciones. El acceso se genera desde cada obra.</p>
+    </div>
+</div>
+
+<div class="card">
+    @if (_lista is null) { <p class="muted">Cargando…</p> }
+    else if (_lista.Count == 0) { <p class="empty">Ninguna obra tiene acceso todavía. Entrá a una obra → «App del cliente» para generar el código y PIN.</p> }
+    else
+    {
+        <table>
+            <thead><tr><th>Obra</th><th>Cliente</th><th>Código</th><th>Último ingreso</th><th>Mensajes</th><th>Aprobaciones</th></tr></thead>
+            <tbody>
+                @foreach (var r in _lista)
+                {
+                    <tr>
+                        <td><a href="/admin/obras/@r.ObraId/cliente">@r.Codigo · @r.Obra</a></td>
+                        <td>@r.Cliente</td>
+                        <td>@if (r.CodigoCliente is null) { <span class="muted">sin acceso</span> } else { @r.CodigoCliente @if (!r.Activo) { <span class="chip chip-apagado">desactivado</span> } }</td>
+                        <td>@(r.UltimoIngreso is DateTime u ? Textos.Fecha(u) : "—")</td>
+                        <td>@if (r.MensajesSinLeer > 0) { <span class="chip chip-alerta">@r.MensajesSinLeer sin leer</span> } else { <span class="muted">@(r.UltimoMensaje is DateTime m ? Textos.Dia(m) : "—")</span> }</td>
+                        <td>
+                            @if (r.RespuestasNuevas > 0) { <span class="chip chip-alerta">@r.RespuestasNuevas respondida(s)</span> }
+                            @if (r.Pendientes > 0) { <span class="chip">@r.Pendientes esperando al cliente</span> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<GestionCliente.ResumenObra>? _lista;
+
+    protected override async Task OnInitializedAsync() => _lista = await Gestion.BandejaAsync();
+}

@@ -1,0 +1,209 @@
+@page "/admin/indicadores"
+@rendermode InteractiveServer
+@inject Indicadores Svc
+
+<PageTitle>Indicadores | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Indicadores</h1>
+        <p>Lo que dicen los datos que se cargan en todo el proceso: de dónde vienen los clientes, por qué se pierden presupuestos,
+            cuánto deja cada obra, qué la atrasa, cuánto material se tira y qué reclaman después.</p>
+    </div>
+    <select @bind="_meses" @bind:after="CargarAsync">
+        <option value="3">Últimos 3 meses</option>
+        <option value="6">Últimos 6 meses</option>
+        <option value="12">Último año</option>
+        <option value="36">Últimos 3 años</option>
+    </select>
+</div>
+
+@if (_cargando) { <p class="muted">Calculando…</p> return; }
+
+<div class="grid-2">
+    <div class="card">
+        <h2>De dónde vienen los clientes</h2>
+        @if (_canales.Count == 0) { <p class="empty">Sin consultas en el período.</p> }
+        else
+        {
+            <table>
+                <thead><tr><th>Canal</th><th>Consultas</th><th>Clientes</th><th>Obras</th><th>Respuesta</th></tr></thead>
+                <tbody>
+                    @foreach (var c in _canales)
+                    {
+                        <tr><td>@Textos.Etiqueta(c.Canal)</td><td>@c.Consultas</td><td>@c.Clientes</td><td>@c.ObrasGanadas</td>
+                            <td>@(c.HorasRespuestaMediana is double h ? Textos.Demora(TimeSpan.FromHours(h)) : "—")</td></tr>
+                    }
+                </tbody>
+            </table>
+            <p class="muted" style="font-size:.8rem">Respuesta = mediana del tiempo hasta marcarla contactada.</p>
+        }
+        @if (_publicaciones.Count > 0)
+        {
+            <h3 style="margin-top:1rem">Publicaciones que trajeron consultas</h3>
+            <ul style="margin-left:1rem">@foreach (var p in _publicaciones) { <li>@p.Titulo (@p.Red): @p.Consultas consulta(s), @p.Clientes cliente(s)</li> }</ul>
+        }
+    </div>
+
+    <div class="card">
+        <h2>Presupuestos</h2>
+        @if (_embudo is not null)
+        {
+            <p>Enviados <strong>@_embudo.Enviados</strong> · aceptados <strong>@_embudo.Aceptados</strong> · perdidos <strong>@_embudo.Rechazados</strong> · esperando @_embudo.Abiertos
+                @if (_embudo.TasaCierre is decimal t) { <span> · cierre <strong>@t%</strong></span> }
+                @if (_embudo.DiasDecisionMediana is double d) { <span> · el cliente decide en @Textos.Numero((decimal)d) días (mediana)</span> }</p>
+            @if (_embudo.Motivos.Count > 0)
+            {
+                <h3>Por qué se pierden</h3>
+                <ul style="margin-left:1rem">@foreach (var (m, n) in _embudo.Motivos.OrderByDescending(x => x.Value)) { <li>@Textos.Etiqueta(m): @n</li> }</ul>
+            }
+            @if (_embudo.DescartesConsulta.Count > 0)
+            {
+                <h3>Consultas descartadas</h3>
+                <ul style="margin-left:1rem">@foreach (var (m, n) in _embudo.DescartesConsulta.OrderByDescending(x => x.Value)) { <li>@Textos.Etiqueta(m): @n</li> }</ul>
+            }
+        }
+    </div>
+</div>
+
+<div class="card">
+    <h2>Cuánto deja cada obra</h2>
+    @if (_obras.Count == 0) { <p class="empty">No hay obras en curso o terminadas.</p> }
+    else
+    {
+        <table>
+            <thead><tr><th>Obra</th><th>Obra + adicionales</th><th>Materiales</th><th>Mano de obra</th><th>Gastos</th><th>Margen</th></tr></thead>
+            <tbody>
+                @foreach (var o in _obras)
+                {
+                    <tr>
+                        <td><a href="/admin/obras/@o.Id/costos">@o.Codigo</a> @o.Nombre @if (o.R.Incompleta) { <span class="chip chip-alerta" title="Faltan precios o valores hora">incompleto</span> }</td>
+                        <td>@Textos.Moneda(o.R.Facturable)</td>
+                        <td>@Textos.Moneda(o.R.Materiales)</td>
+                        <td>@Textos.Moneda(o.R.ManoDeObra)</td>
+                        <td>@Textos.Moneda(o.R.TotalGastos)</td>
+                        <td><strong>@Textos.Moneda(o.R.Margen)</strong> @(o.R.MargenPorcentaje is decimal p ? $"({Textos.Numero(p)}%)" : "")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h2>Qué atrasa las obras</h2>
+        @if (_causas.Count == 0) { <p class="empty">Todavía no se anotaron causas de atraso.</p> }
+        else
+        {
+            <table>
+                <thead><tr><th>Causa</th><th>Tareas</th><th>Días de atraso</th><th>Obras</th></tr></thead>
+                <tbody>@foreach (var c in _causas) { <tr><td>@Textos.Etiqueta(c.Causa)</td><td>@c.Tareas</td><td>@c.DiasAtraso</td><td>@c.Obras</td></tr> }</tbody>
+            </table>
+        }
+    </div>
+    <div class="card">
+        <h2>Trámites: cuánto tarda cada organismo</h2>
+        @if (_tramites.Count == 0) { <p class="empty">Sin trámites cargados.</p> }
+        else
+        {
+            <table>
+                <thead><tr><th>Organismo</th><th>Trámite</th><th>Aprobados</th><th>Días (mediana)</th><th>Observaciones</th></tr></thead>
+                <tbody>@foreach (var t in _tramites) { <tr><td>@t.Organismo</td><td>@t.Tramite</td><td>@t.Aprobados / @t.Cantidad</td><td>@(t.DiasMediana?.ToString("0") ?? "—")</td><td>@t.Observaciones</td></tr> }</tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h2>Desperdicio de material</h2>
+        @if (_desperdicio.Count == 0) { <p class="empty">Cargá los sobrantes al cerrar cada etapa para medirlo.</p> }
+        else
+        {
+            <table>
+                <thead><tr><th>Material</th><th>Recibido</th><th>Tirado</th><th>Devuelto / reusado</th><th>%</th></tr></thead>
+                <tbody>@foreach (var d in _desperdicio) { <tr><td>@d.Material</td><td>@Textos.Numero(d.Recibido) @d.Unidad</td><td>@Textos.Numero(d.Desperdiciado)</td><td>@Textos.Numero(d.Devuelto)</td><td>@Textos.Numero(d.Porcentaje)%</td></tr> }</tbody>
+            </table>
+        }
+    </div>
+    <div class="card">
+        <h2>Precios por proveedor (último año)</h2>
+        @if (_precios.Count == 0) { <p class="empty">Cargá los precios de las facturas en las recepciones de material.</p> }
+        else
+        {
+            <table>
+                <thead><tr><th>Material</th><th>Proveedor</th><th>Promedio</th><th>Mín – máx</th><th>Compras</th></tr></thead>
+                <tbody>@foreach (var p in _precios) { <tr><td>@p.Material (@p.Unidad)</td><td>@p.Proveedor</td><td>@Textos.Moneda(p.PrecioPromedio)</td><td>@Textos.Moneda(p.PrecioMinimo) – @Textos.Moneda(p.PrecioMaximo)</td><td>@p.Compras</td></tr> }</tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <h2>Reclamos de garantía</h2>
+        @if (_reclamos.Count == 0) { <p class="empty">Sin reclamos.</p> }
+        else
+        {
+            <table>
+                <thead><tr><th>Rubro</th><th>Causa</th><th>Cantidad</th><th>Costo</th><th>Días para resolver</th></tr></thead>
+                <tbody>@foreach (var r in _reclamos) { <tr><td>@r.Rubro</td><td>@(r.Causa is CausaReclamo c ? Textos.Etiqueta(c) : "sin revisar")</td><td>@r.Cantidad</td><td>@Textos.Moneda(r.Costo)</td><td>@(r.DiasResolucionMediana?.ToString("0") ?? "—")</td></tr> }</tbody>
+            </table>
+        }
+    </div>
+    <div class="card">
+        <h2>Satisfacción de los clientes</h2>
+        @if (_satisfaccion is null || _satisfaccion.Respuestas == 0) { <p class="empty">Todavía no hay encuestas respondidas. Se piden solas al terminar cada etapa y al firmar el acta de entrega.</p> }
+        else
+        {
+            <p>NPS <strong>@_satisfaccion.Nps</strong> (@_satisfaccion.Respuestas respuestas, @_satisfaccion.Pendientes sin responder)
+                @if (_satisfaccion.PromedioEntrega is decimal pe) { <span> · al entregar: <strong>@pe</strong>/10</span> }</p>
+            <p class="muted" style="font-size:.8rem">NPS = % que pone 9 o 10 menos % que pone 0 a 6. Arriba de 50 es muy bueno.</p>
+            @if (_satisfaccion.PorEtapa.Count > 0)
+            {
+                <h3>Por etapa (de peor a mejor)</h3>
+                <ul style="margin-left:1rem">@foreach (var (e, p, n) in _satisfaccion.PorEtapa) { <li>@e: @p (@n)</li> }</ul>
+            }
+            @if (_satisfaccion.ComentariosBajos.Count > 0)
+            {
+                <h3>Lo que no les gustó</h3>
+                <ul style="margin-left:1rem">@foreach (var (o, p, c) in _satisfaccion.ComentariosBajos) { <li>@o (@p): «@c»</li> }</ul>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private int _meses = 12;
+    private bool _cargando = true;
+    private List<Indicadores.FilaCanal> _canales = [];
+    private List<Indicadores.FilaPublicacion> _publicaciones = [];
+    private Indicadores.Embudo? _embudo;
+    private List<Indicadores.FilaObra> _obras = [];
+    private List<Indicadores.FilaCausa> _causas = [];
+    private List<Indicadores.FilaTramite> _tramites = [];
+    private List<CostosObra.Desperdicio> _desperdicio = [];
+    private List<CostosObra.PrecioMaterial> _precios = [];
+    private List<Indicadores.FilaReclamo> _reclamos = [];
+    private Indicadores.Satisfaccion? _satisfaccion;
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _cargando = true;
+        var desde = DateTime.UtcNow.AddMonths(-_meses);
+        _canales = await Svc.CanalesAsync(desde);
+        _publicaciones = await Svc.PublicacionesQueTraenAsync(desde);
+        _embudo = await Svc.PresupuestosAsync(DateOnly.FromDateTime(desde));
+        _obras = await Svc.RentabilidadObrasAsync();
+        _causas = await Svc.CausasAtrasoAsync();
+        _tramites = await Svc.TramitesAsync();
+        _desperdicio = await Svc.DesperdicioAsync();
+        _precios = await Svc.PreciosAsync();
+        _reclamos = await Svc.ReclamosAsync();
+        _satisfaccion = await Svc.SatisfaccionAsync();
+        _cargando = false;
+    }
+}

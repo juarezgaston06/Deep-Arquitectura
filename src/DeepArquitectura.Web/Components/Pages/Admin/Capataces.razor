@@ -1,0 +1,135 @@
+@page "/admin/capataces"
+@rendermode InteractiveServer
+@inject CapatazService Svc
+
+<PageTitle>Capataces | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Capataces</h1>
+        <p>Usuarios de la app Android de obra. Cada capataz solo ve las obras que le asignás.</p>
+    </div>
+    @if (!_mostrarAlta)
+    {
+        <button class="btn" @onclick="() => { _mostrarAlta = true; _pinCreado = null; }">+ Nuevo capataz</button>
+    }
+</div>
+
+@if (_pinCreado is not null)
+{
+    <div class="alert alert-ok">
+        Listo. Pasale estos datos al capataz para entrar a la app:
+        usuario <strong>@_usuarioCreado</strong> · PIN <strong style="font-size:1.1rem;letter-spacing:2px">@_pinCreado</strong>.
+        El PIN no se vuelve a mostrar (si se lo olvida, generale uno nuevo desde su ficha).
+    </div>
+}
+
+@if (_mostrarAlta)
+{
+    <div class="card">
+        <h2>Nuevo capataz</h2>
+        @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+        <div class="form-grid">
+            <div class="field"><label>Nombre y apellido</label><input @bind="_nombre" maxlength="150" /></div>
+            <div class="field"><label>Usuario para la app</label><input @bind="_usuario" maxlength="60" placeholder="ej. jperez" /></div>
+            <div class="field"><label>Teléfono</label><input @bind="_telefono" maxlength="50" /></div>
+            <div class="field">
+                <label>PIN (mín. @CapatazService.PinMinimo)</label>
+                <div style="display:flex;gap:.5rem">
+                    <input @bind="_pin" maxlength="@CapatazService.PinMaximo" />
+                    <button class="btn btn-sm btn-outline" type="button" @onclick="() => _pin = GenerarPin()">Generar</button>
+                </div>
+            </div>
+            <div class="field full">
+                <label>Obras asignadas</label>
+                <div class="checks">
+                    @foreach (var o in _obras)
+                    {
+                        <label><input type="checkbox" checked="@_seleccion.Contains(o.Id)" @onchange="ev => Alternar(o.Id, ev.Value)" /> @o.Codigo · @o.Nombre</label>
+                    }
+                    @if (_obras.Count == 0) { <span class="muted">No hay obras activas.</span> }
+                </div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn" @onclick="Crear">Crear capataz</button>
+            <button class="btn-link" @onclick="() => _mostrarAlta = false">Cancelar</button>
+        </div>
+    </div>
+}
+
+<div class="card">
+    @if (_lista.Count == 0)
+    {
+        <p class="empty">Todavía no cargaste capataces.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Nombre</th><th>Usuario</th><th>Obras</th><th class="hide-mobile">Último acceso</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in _lista)
+                {
+                    <tr>
+                        <td><a href="/admin/capataces/@c.Id"><strong>@c.Nombre</strong></a><br /><span class="muted">@c.Telefono</span></td>
+                        <td>@c.Usuario</td>
+                        <td>@(c.Obras.Count == 0 ? "—" : string.Join(", ", c.Obras))</td>
+                        <td class="hide-mobile">@(c.UltimoAcceso is null ? "nunca" : Textos.Fecha(c.UltimoAcceso.Value))</td>
+                        <td>@if (!c.Activo) { <span class="chip chip-apagado">desactivado</span> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private record Fila(int Id, string Nombre, string Usuario, string? Telefono, bool Activo, DateTime? UltimoAcceso, List<string> Obras);
+    private record ObraOpcion(int Id, string Codigo, string Nombre);
+
+    private List<Fila> _lista = [];
+    private List<ObraOpcion> _obras = [];
+    private readonly HashSet<int> _seleccion = [];
+    private bool _mostrarAlta;
+    private string _nombre = "", _usuario = "", _telefono = "", _pin = "";
+    private string? _error, _pinCreado, _usuarioCreado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _pin = GenerarPin();
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _lista = await db.Capataces.AsNoTracking().OrderByDescending(c => c.Activo).ThenBy(c => c.Nombre)
+            .Select(c => new Fila(c.Id, c.Nombre, c.Usuario, c.Telefono, c.Activo, c.UltimoAcceso,
+                c.Obras.Select(o => o.Obra.Codigo).ToList()))
+            .ToListAsync();
+        _obras = await db.Obras.AsNoTracking()
+            .Where(o => o.Estado != EstadoObra.Finalizada && o.Estado != EstadoObra.Cancelada)
+            .OrderBy(o => o.Nombre).Select(o => new ObraOpcion(o.Id, o.Codigo, o.Nombre)).ToListAsync();
+    }
+
+    private void Alternar(int obraId, object? valor)
+    {
+        if (valor is true) _seleccion.Add(obraId); else _seleccion.Remove(obraId);
+    }
+
+    private async Task Crear()
+    {
+        var (id, error) = await Svc.CrearAsync(_nombre, _usuario, _telefono, _pin, _seleccion);
+        _error = error;
+        if (id is null) return;
+        _pinCreado = _pin;
+        _usuarioCreado = CapatazService.NormalizarUsuario(_usuario);
+        _nombre = _usuario = _telefono = "";
+        _pin = GenerarPin();
+        _seleccion.Clear();
+        _mostrarAlta = false;
+        await CargarAsync();
+    }
+
+    internal static string GenerarPin() => System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+}

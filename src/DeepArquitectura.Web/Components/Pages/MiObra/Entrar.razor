@@ -1,0 +1,54 @@
+@page "/mi-obra/entrar"
+
+<PageTitle>Mi obra | Deep Arquitectura</PageTitle>
+
+<section class="ingreso">
+    <img src="/img/app/icon-192.png" alt="" width="96" height="96" class="ingreso-logo" />
+    <h1>Seguí tu obra</h1>
+    <p class="suave">Ingresá con el código de obra y el PIN que te mandó el estudio.</p>
+
+    @if (Mensaje is { } m)
+    {
+        <div class="aviso @(m.Ok ? "aviso-ok" : "aviso-error")" role="alert">@m.Texto</div>
+    }
+
+    <form method="post" action="/mi-obra/ingresar" class="tarjeta">
+        <AntiforgeryToken />
+        <label for="codigo">Código de obra</label>
+        <input id="codigo" name="codigo" value="@Codigo" placeholder="DEEP-XXXX-XXXX" required maxlength="40"
+               autocapitalize="characters" autocomplete="username" spellcheck="false" autofocus="@(Codigo is null)" />
+        <label for="pin">PIN</label>
+        <input id="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required
+               placeholder="6 números" autocomplete="current-password" autofocus="@(Codigo is not null)" />
+        <button type="submit" class="boton">Entrar</button>
+    </form>
+
+    <p class="suave chico">¿No tenés el código o te olvidaste el PIN? Pedíselo al estudio por
+        <a href="https://wa.me/@Contacto.WhatsAppNumero">WhatsApp</a>.</p>
+</section>
+
+@code {
+    [CascadingParameter] private HttpContext Http { get; set; } = null!;
+    [Inject] private NavigationManager Nav { get; set; } = null!;
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    [SupplyParameterFromQuery(Name = "codigo")] public string? Codigo { get; set; }
+    [SupplyParameterFromQuery] public string? Salio { get; set; }
+
+    private (string Texto, bool Ok)? Mensaje => Error switch
+    {
+        "datos" => ("El código o el PIN no coinciden. Revisalos y probá de nuevo.", false),
+        "bloqueado" => ("Demasiados intentos con este código. Esperá 15 minutos o pedile un PIN nuevo al estudio.", false),
+        "limite" => ("Demasiados intentos desde esta conexión. Esperá unos minutos.", false),
+        "sesion" => ("La página estuvo abierta mucho tiempo. Ingresá de nuevo.", false),
+        not null => ("No pudimos ingresar. Probá de nuevo.", false),
+        null when Salio is not null => ("Cerraste la sesión.", true),
+        _ => null,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Ya con sesión: directo a la obra.
+        if (await SesionCliente.ObraAsync(Http) is not null) { Nav.NavigateTo("/mi-obra/"); return; }
+        Codigo = AccesoClientes.Normalizar(Codigo);
+    }
+}

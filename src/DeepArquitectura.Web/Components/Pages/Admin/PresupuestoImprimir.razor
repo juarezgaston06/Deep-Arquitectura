@@ -1,0 +1,94 @@
+@page "/admin/presupuestos/{Id:int}/imprimir"
+@layout ImprimirLayout
+
+<PageTitle>@(_p is null ? "Presupuesto" : $"{_p.Numero} — {_p.NombreDestinatario}") | Deep Arquitectura</PageTitle>
+
+@if (_p is null)
+{
+    <p style="padding:2rem">Presupuesto no encontrado.</p>
+}
+else
+{
+    <div class="print-bar no-print">
+        <a href="/admin/presupuestos/@_p.Id">← Volver al presupuesto</a>
+        <button class="btn" onclick="window.print()">Imprimir / Guardar PDF</button>
+    </div>
+
+    <article class="doc">
+        <header class="doc-head">
+            <img src="@Assets["img/logo.png"]" alt="Deep Arquitectura" />
+            <div class="doc-estudio">
+                <strong>Deep Arquitectura</strong>
+                <span>Diseño &amp; Construcción · Maestro Mayor de Obra</span>
+                <span>WhatsApp @Contacto.WhatsAppVisible · @Contacto.Email</span>
+            </div>
+            <div class="doc-num">
+                <span>Presupuesto</span>
+                <strong>@_p.Numero</strong>
+                <span>@Textos.Fecha(_p.Fecha)</span>
+            </div>
+        </header>
+
+        <section class="doc-datos">
+            <div><span>Para</span><strong>@_p.NombreDestinatario</strong>
+                @if (_p.Cliente?.DniCuit is { Length: > 0 } dni) { <em>DNI/CUIT @dni</em> }
+            </div>
+            <div><span>Obra</span><strong>@_p.Titulo</strong>
+                @if (_p.Ubicacion is not null) { <em>@_p.Ubicacion</em> }
+            </div>
+            @if (_p.SuperficieTotal > 0 || _p.MontoObra > 0)
+            {
+                <div><span>Superficie / monto de obra</span>
+                    <strong>@(_p.SuperficieTotal > 0 ? $"{Textos.Numero(_p.SuperficieTotal)} m² · " : "")@Textos.Moneda(_p.MontoObra)</strong>
+                </div>
+            }
+        </section>
+
+        @foreach (var seccion in _p.Items.OrderBy(i => i.Orden).GroupBy(i => i.Seccion))
+        {
+            <h2>@seccion.Key</h2>
+            <table class="doc-tabla">
+                <tbody>
+                    @foreach (var i in seccion)
+                    {
+                        <tr>
+                            <td>
+                                @i.Concepto
+                                @if (i.Detalle is not null) { <div class="doc-detalle">@i.Detalle</div> }
+                            </td>
+                            <td class="importe">@Textos.Moneda(i.Importe)</td>
+                        </tr>
+                    }
+                    <tr class="sub"><td>Subtotal</td><td class="importe">@Textos.Moneda(seccion.Sum(i => i.Importe))</td></tr>
+                </tbody>
+            </table>
+        }
+
+        <div class="doc-total"><span>Total</span><strong>@Textos.Moneda(_p.Total)</strong></div>
+
+        @if (_p.Notas is not null)
+        {
+            <section class="doc-notas"><h2>Observaciones</h2><p>@_p.Notas</p></section>
+        }
+
+        <footer class="doc-pie">
+            Presupuesto válido hasta el @Textos.Fecha(_p.VenceEl).
+            Honorarios calculados según la escala arancelaria del Colegio Profesional de Maestros Mayores de Obras y Técnicos de Córdoba
+            (@_p.ArancelVersion.Nombre, vigencia @Textos.Fecha(_p.ArancelVersion.VigenteDesde) al @Textos.Fecha(_p.ArancelVersion.VigenteHasta)).
+            Los gastos y aportes se abonan ante los organismos correspondientes.
+        </footer>
+    </article>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Presupuesto? _p;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _p = await db.Presupuestos.AsNoTracking()
+            .Include(p => p.Cliente).Include(p => p.ArancelVersion).Include(p => p.Items)
+            .FirstOrDefaultAsync(p => p.Id == Id);
+    }
+}

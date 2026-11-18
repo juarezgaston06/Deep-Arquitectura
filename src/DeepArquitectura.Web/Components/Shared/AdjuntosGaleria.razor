@@ -1,0 +1,29 @@
+@* Miniaturas de fotos y links a PDF. Base = "/admin/adjuntos" en el panel o "/mi-obra/adjuntos" en la app del cliente. *@
+@if (Items.Count > 0)
+{
+    <div class="adjuntos">
+        @foreach (var a in Items)
+        {
+            <span class="adj-item">
+                <a href="@($"{Base}/{a.Id}")" target="_blank" rel="noopener">
+                    @if (Adjuntos.EsImagen(a) && a.ContentType != "image/heic")
+                    {
+                        <img src="@($"{Base}/{a.Id}")" alt="@(a.EsResolucion ? "Después" : "Foto")" loading="lazy" />
+                    }
+                    else
+                    {
+                        <span class="adj-archivo">@(a.ContentType == "application/pdf" ? "PDF" : "Archivo")</span>
+                    }
+                </a>
+                @if (a.EsResolucion) { <small>después</small> }
+                @if (OnBorrar.HasDelegate) { <button type="button" class="btn-link btn-danger" @onclick="() => OnBorrar.InvokeAsync(a.Id)">quitar</button> }
+            </span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<Adjunto> Items { get; set; } = [];
+    [Parameter] public string Base { get; set; } = "/admin/adjuntos";
+    [Parameter] public EventCallback<int> OnBorrar { get; set; }
+}

@@ -1,0 +1,153 @@
+@page "/admin/capataces/{Id:int}"
+@rendermode InteractiveServer
+@inject CapatazService Svc
+
+<PageTitle>@(_c?.Nombre ?? "Capataz") | Deep Arquitectura</PageTitle>
+
+@if (_c is null)
+{
+    <p class="muted">@(_noEncontrado ? "Capataz no encontrado." : "Cargando…")</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>@_c.Nombre</h1>
+            <p>Usuario <strong>@_c.Usuario</strong> · último acceso @(_c.UltimoAcceso is null ? "nunca" : Textos.Fecha(_c.UltimoAcceso.Value))</p>
+        </div>
+        <div style="display:flex;gap:.75rem;align-items:center">
+            @if (_c.Activo)
+            {
+                <span class="chip chip-ok">activo</span>
+                <button class="btn btn-outline" @onclick="() => CambiarActivo(false)">Desactivar</button>
+            }
+            else
+            {
+                <span class="chip chip-apagado">desactivado</span>
+                <button class="btn" @onclick="() => CambiarActivo(true)">Reactivar</button>
+            }
+        </div>
+    </div>
+
+    @if (_mensaje is not null) { <div class="alert alert-ok">@_mensaje</div> }
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+
+    <div class="grid-2">
+        <div class="card">
+            <h2>Obras asignadas</h2>
+            <p class="muted" style="margin-bottom:.5rem">Solo estas obras aparecen en su app. Si le sacás una, deja de verla en el momento.</p>
+            <div class="checks">
+                @foreach (var o in _obras)
+                {
+                    <label><input type="checkbox" checked="@o.Asignada" @onchange="ev => Asignar(o.Id, ev.Value is true)" /> @o.Codigo · @o.Nombre <span class="muted">(@Textos.Etiqueta(o.Estado))</span></label>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Datos</h2>
+            <div class="form-grid">
+                <div class="field"><label>Nombre</label><input @bind="_nombre" maxlength="150" /></div>
+                <div class="field"><label>Teléfono</label><input @bind="_telefono" maxlength="50" /></div>
+            </div>
+            <div class="form-actions"><button class="btn btn-sm" @onclick="GuardarDatos">Guardar</button></div>
+
+            <h2 style="margin-top:1.5rem">PIN de acceso</h2>
+            <p class="muted" style="margin-bottom:.5rem">Al cambiarlo se cierra la sesión en su teléfono.</p>
+            <div style="display:flex;gap:.5rem;max-width:360px">
+                <input @bind="_pin" maxlength="@CapatazService.PinMaximo" placeholder="Nuevo PIN" />
+                <button class="btn btn-sm btn-outline" @onclick="() => _pin = Capataces.GenerarPin()">Generar</button>
+                <button class="btn btn-sm" @onclick="CambiarPin" disabled="@string.IsNullOrEmpty(_pin)">Guardar PIN</button>
+            </div>
+
+            <h2 style="margin-top:1.5rem">Teléfonos con sesión abierta</h2>
+            @if (_sesiones.Count == 0)
+            {
+                <p class="muted">Ninguno.</p>
+            }
+            else
+            {
+                <table>
+                    <tbody>
+                        @foreach (var s in _sesiones)
+                        {
+                            <tr><td>@(s.Dispositivo ?? "Teléfono")</td><td class="muted">usado @Textos.Fecha(s.UltimoUso)</td></tr>
+                        }
+                    </tbody>
+                </table>
+                <button class="btn-link btn-danger" style="margin-top:.5rem" @onclick="CerrarSesiones">Cerrar sesión en todos los teléfonos</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private record ObraFila(int Id, string Codigo, string Nombre, EstadoObra Estado, bool Asignada);
+
+    private Capataz? _c;
+    private bool _noEncontrado;
+    private List<ObraFila> _obras = [];
+    private List<SesionCapataz> _sesiones = [];
+    private string _nombre = "", _telefono = "", _pin = "";
+    private string? _mensaje, _error;
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _c = await db.Capataces.AsNoTracking().SingleOrDefaultAsync(c => c.Id == Id);
+        _noEncontrado = _c is null;
+        if (_c is null) return;
+        _nombre = _c.Nombre;
+        _telefono = _c.Telefono ?? "";
+        var asignadas = await db.CapatazObras.Where(x => x.CapatazId == Id).Select(x => x.ObraId).ToListAsync();
+        // Obras activas + las asignadas aunque ya estén cerradas (para poder quitarlas).
+        _obras = await db.Obras.AsNoTracking()
+            .Where(o => (o.Estado != EstadoObra.Finalizada && o.Estado != EstadoObra.Cancelada) || asignadas.Contains(o.Id))
+            .OrderBy(o => o.Nombre)
+            .Select(o => new ObraFila(o.Id, o.Codigo, o.Nombre, o.Estado, asignadas.Contains(o.Id)))
+            .ToListAsync();
+        _sesiones = await db.SesionesCapataz.AsNoTracking().Where(s => s.CapatazId == Id).OrderByDescending(s => s.UltimoUso).ToListAsync();
+    }
+
+    private async Task Asignar(int obraId, bool asignada)
+    {
+        await Svc.AsignarAsync(Id, obraId, asignada);
+        _mensaje = asignada ? "Obra asignada." : "Obra quitada.";
+        _error = null;
+        await CargarAsync();
+    }
+
+    private async Task GuardarDatos()
+    {
+        if (string.IsNullOrWhiteSpace(_nombre)) { _error = "Ingresá el nombre."; return; }
+        await Svc.ActualizarDatosAsync(Id, _nombre, _telefono);
+        _mensaje = "Datos guardados."; _error = null;
+        await CargarAsync();
+    }
+
+    private async Task CambiarPin()
+    {
+        _error = await Svc.CambiarPinAsync(Id, _pin);
+        _mensaje = _error is null ? $"PIN nuevo: {_pin}. Pasáselo al capataz (no se vuelve a mostrar)." : null;
+        if (_error is null) _pin = "";
+        await CargarAsync();
+    }
+
+    private async Task CambiarActivo(bool activo)
+    {
+        await Svc.CambiarActivoAsync(Id, activo);
+        _mensaje = activo ? "Capataz reactivado." : "Capataz desactivado: ya no puede entrar a la app."; _error = null;
+        await CargarAsync();
+    }
+
+    private async Task CerrarSesiones()
+    {
+        var n = await Svc.CerrarSesionesAsync(Id);
+        _mensaje = $"Se cerraron {n} sesión(es)."; _error = null;
+        await CargarAsync();
+    }
+}

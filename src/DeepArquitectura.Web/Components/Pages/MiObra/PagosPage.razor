@@ -1,0 +1,152 @@
+@page "/mi-obra/pagos"
+@inherits PaginaCliente
+@inject AppCliente App
+
+<PageTitle>Pagos | Mi obra</PageTitle>
+
+<a class="volver" href="/mi-obra/mas">‹ Más</a>
+<h1>Certificados y pagos</h1>
+
+@if (_p is { } p)
+{
+    <section class="tarjeta">
+        <div class="datos datos-2">
+            <div><span>Monto de la obra</span><strong>@Textos.Moneda(p.MontoObra)</strong></div>
+            @if (p.Adicionales > 0) { <div><span>Adicionales aprobados</span><strong>@Textos.Moneda(p.Adicionales)</strong></div> }
+            <div><span>Pagado</span><strong>@Textos.Moneda(p.Pagado)</strong></div>
+            @if (p.Saldo is decimal s) { <div><span>Saldo</span><strong>@Textos.Moneda(s)</strong></div> }
+        </div>
+        @if (p.MontoObra is decimal total && total > 0)
+        {
+            var pct = (int)Math.Clamp(Math.Round(p.Pagado / (total + p.Adicionales) * 100), 0, 100);
+            <div class="barra" aria-label="Pagado @pct%"><span style="width:@(pct)%"></span></div>
+            <p class="suave chico">Pagaste el @pct% del total.</p>
+        }
+    </section>
+
+    @if (p.APagar > 0)
+    {
+        <div class="tarjeta tarjeta-alerta">
+            <span class="etiqueta">Certificados a pagar</span>
+            <strong class="grande">@Textos.Moneda(p.APagar)</strong>
+            <span class="suave chico">Consultá al estudio los datos para transferir.</span>
+        </div>
+    }
+
+    <AvisoPantalla />
+
+    <details class="tarjeta" open="@(p.APagar > 0)">
+        <summary><strong>Avisar un pago que hiciste</strong></summary>
+        <form method="post" action="/mi-obra/pagos/informar" enctype="multipart/form-data" class="escribir">
+            <AntiforgeryToken />
+            <input type="hidden" name="ref" value="@Guid.NewGuid()" />
+            <label for="monto">Monto ($)</label>
+            <input id="monto" name="monto" inputmode="decimal" required placeholder="Ej.: 250000" />
+            <label for="fecha">Fecha del pago</label>
+            <input id="fecha" name="fecha" type="date" required value="@Textos.HoyLocal().ToString("yyyy-MM-dd")" max="@Textos.HoyLocal().ToString("yyyy-MM-dd")" />
+            <label for="medio">Cómo pagaste</label>
+            <select id="medio" name="medio">
+                <option value="@MedioPago.Transferencia">Transferencia</option>
+                <option value="@MedioPago.Efectivo">Efectivo</option>
+                <option value="@MedioPago.Otro">Otro</option>
+            </select>
+            @if (_aPagar.Count > 0)
+            {
+                <label for="certificado">¿Qué estás pagando?</label>
+                <select id="certificado" name="certificado">
+                    <option value="">A cuenta / otro concepto</option>
+                    @foreach (var c in _aPagar) { <option value="@c.Id">Certificado N° @c.Numero (@Textos.Moneda(c.Monto))</option> }
+                </select>
+            }
+            <label for="comprobante">Comprobante (foto o PDF; obligatorio si es transferencia)</label>
+            <input id="comprobante" name="comprobante" type="file" accept="image/*,.pdf" />
+            <label for="nota">Nota (opcional)</label>
+            <input id="nota" name="nota" maxlength="1000" />
+            <label for="nombre">Tu nombre</label>
+            <input id="nombre" name="nombre" maxlength="120" autocomplete="name" data-recordar="nombre" />
+            <button type="submit" class="boton">Avisar el pago</button>
+        </form>
+    </details>
+
+    @if (_informados.Count > 0)
+    {
+        <h2>Pagos que avisaste</h2>
+        <ul class="lista">
+            @foreach (var pi in _informados)
+            {
+                <li>
+                    <div>
+                        <strong>@Textos.Moneda(pi.Monto)</strong>
+                        <span class="suave chico">@Textos.Fecha(pi.Fecha) · @Textos.Etiqueta(pi.Medio)@(pi.Certificado is null ? "" : $" · certificado N° {pi.Certificado.Numero}")</span>
+                        @if (pi.MotivoRechazo is not null) { <span class="chico">@pi.MotivoRechazo</span> }
+                    </div>
+                    <span class="chip @(pi.Estado switch { EstadoPagoInformado.Confirmado => "chip-ok", EstadoPagoInformado.Pendiente => "chip-alerta", _ => "" })">@Textos.Etiqueta(pi.Estado)</span>
+                </li>
+            }
+        </ul>
+    }
+
+    <h2>Certificados de avance</h2>
+    @if (p.Certificados.Count == 0)
+    {
+        <p class="vacio">Todavía no hay certificados emitidos.</p>
+    }
+    else
+    {
+        <p class="suave chico">Cada certificado cobra el avance aprobado del período sobre el monto de la obra.</p>
+        <ul class="lista">
+            @foreach (var c in p.Certificados)
+            {
+                <li>
+                    <div>
+                        <strong>Certificado N° @c.Numero</strong>
+                        <span class="suave chico">@Textos.Fecha(c.Fecha) · avance del período @c.PorcentajePeriodo.ToString("0.#")% (acumulado @c.PorcentajeAcumulado.ToString("0.#")%)</span>
+                    </div>
+                    <div class="derecha">
+                        <strong>@Textos.Moneda(c.Monto)</strong>
+                        <span class="chip @(c.Cobrado ? "chip-ok" : "chip-alerta")">@(c.Cobrado ? "Pagado" : "A pagar")</span>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+
+    <h2>Pagos registrados</h2>
+    @if (p.Movimientos.Count == 0)
+    {
+        <p class="vacio">Todavía no hay pagos registrados.</p>
+    }
+    else
+    {
+        <ul class="lista">
+            @foreach (var m in p.Movimientos)
+            {
+                <li>
+                    <div>
+                        <strong>@(m.Concepto ?? "Pago")</strong>
+                        <span class="suave chico">@Textos.Fecha(m.Fecha) · @Textos.Etiqueta(m.Medio)</span>
+                    </div>
+                    <strong class="derecha">@Textos.Moneda(m.Monto)</strong>
+                </li>
+            }
+        </ul>
+    }
+    <p class="suave chico">¿Ves algo que no coincide? Escribinos desde <a href="/mi-obra/mensajes">Mensajes</a>.</p>
+}
+
+@code {
+    [Inject] private Postventa Postventa { get; set; } = null!;
+    [Inject] private IDbContextFactory<AppDbContext> DbFactory { get; set; } = null!;
+    private AppCliente.Pagos? _p;
+    private List<PagoInformado> _informados = [];
+    private List<Certificado> _aPagar = [];
+
+    protected override async Task CargarAsync()
+    {
+        _p = await App.PagosAsync(ObraId);
+        _informados = await Postventa.PagosInformadosAsync(ObraId);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _aPagar = await db.Certificados.AsNoTracking().Where(c => c.ObraId == ObraId && c.Estado == EstadoCertificado.Emitido)
+            .OrderBy(c => c.Numero).ToListAsync();
+    }
+}

@@ -1,0 +1,75 @@
+@page "/mi-obra/entrega"
+@inherits PaginaCliente
+@inject Postventa Svc
+
+<PageTitle>Entrega | Mi obra</PageTitle>
+
+<a class="volver" href="/mi-obra/mas">‹ Más</a>
+<h1>Acta de entrega</h1>
+
+<AvisoPantalla />
+
+@if (_acta is null)
+{
+    <p class="vacio">Cuando terminemos la obra vamos a recorrerla juntos y acá vas a ver el acta de entrega para firmarla.</p>
+}
+else
+{
+    var pendientes = _acta.Observaciones.Count(o => !o.Resuelta);
+    @if (_acta.Estado == EstadoActa.Firmada)
+    {
+        <section class="tarjeta tarjeta-info">
+            <strong>Firmada por @_acta.FirmadaPor el @Textos.Fecha(_acta.FirmadaEn!.Value)</strong>
+            @if (Postventa.GarantiaHasta(_acta) is DateOnly g) { <span class="suave">Tu garantía corre hasta el @Textos.Fecha(g). Si aparece algún problema, avisanos desde <a href="/mi-obra/garantia">Garantía</a>.</span> }
+        </section>
+    }
+    else
+    {
+        <p class="suave">Recorrida del @Textos.Fecha(_acta.FechaRecorrida). Estos son los detalles que quedaron por resolver y cómo los fuimos resolviendo.</p>
+    }
+
+    <h2>Observaciones (@pendientes pendientes)</h2>
+    @if (_acta.Observaciones.Count == 0) { <p class="vacio">No quedó nada pendiente.</p> }
+    <ul class="lista">
+        @foreach (var o in _acta.Observaciones)
+        {
+            <li class="columna">
+                <div>
+                    <strong>@o.Descripcion</strong>
+                    <span class="chip @(o.Resuelta ? "chip-ok" : "chip-alerta")">@(o.Resuelta ? "Resuelta" : "Pendiente")</span>
+                    <span class="suave chico">@o.Ubicacion</span>
+                    @if (o.NotaResolucion is not null) { <span class="chico">@o.NotaResolucion</span> }
+                </div>
+                <AdjuntosGaleria Items="o.Adjuntos" Base="/mi-obra/adjuntos" />
+            </li>
+        }
+    </ul>
+
+    @if (_acta.Estado == EstadoActa.Abierta)
+    {
+        <form method="post" action="/mi-obra/entrega/firmar" class="tarjeta escribir">
+            <AntiforgeryToken />
+            <strong>Firmar el acta</strong>
+            @if (pendientes == 0)
+            {
+                <p class="suave chico">Al firmar dejás constancia de que recibiste la obra conforme. Desde hoy corren @_acta.MesesGarantia meses de garantía.</p>
+                <label><input type="checkbox" name="reservas" value="si" /> Recibo con reservas (hay algo que no me conforma)</label>
+            }
+            else
+            {
+                <p class="suave chico">Quedan @pendientes observación(es) sin resolver. Podés esperar a que las resolvamos, o firmar ahora «con reservas» contando qué queda pendiente.</p>
+                <input type="hidden" name="reservas" value="si" />
+            }
+            <label for="comentario">Comentario @(pendientes > 0 ? "(obligatorio)" : "(opcional)")</label>
+            <textarea id="comentario" name="comentario" rows="3" maxlength="2000" required="@(pendientes > 0)"></textarea>
+            <label for="nombre">Tu nombre completo</label>
+            <input id="nombre" name="nombre" maxlength="120" required autocomplete="name" data-recordar="nombre" />
+            <button type="submit" class="boton">@(pendientes > 0 ? "Firmar con reservas" : "Firmar el acta")</button>
+        </form>
+    }
+}
+
+@code {
+    private ActaEntrega? _acta;
+    protected override async Task CargarAsync() => _acta = await Svc.ActaAsync(ObraId, paraCliente: true);
+}

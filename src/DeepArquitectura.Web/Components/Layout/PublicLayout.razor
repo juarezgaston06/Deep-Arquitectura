@@ -1,0 +1,17 @@
+@inherits LayoutComponentBase
+
+@* Navegación clásica (sin enhanced navigation) para que main.js reinicie animaciones en cada página. *@
+<div data-enhance-nav="false">
+    @Body
+
+    <SiteFooter />
+
+    <a href="https://wa.me/@Contacto.WhatsAppNumero" class="whatsapp-float" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 448 512" width="24" height="24">
+            <path fill="currentColor" d="@Iconos.WhatsApp" />
+        </svg>
+        <span>Contáctanos</span>
+    </a>
+</div>
+
+<script type="module" src="@Assets["js/main.js"]"></script>

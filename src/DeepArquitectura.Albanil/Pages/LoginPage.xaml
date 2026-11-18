@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DeepArquitectura.Albanil.Pages.LoginPage"
+             Title="Deep Cuadrilla"
+             NavigationPage.HasNavigationBar="False"
+             BackgroundColor="#F5EBE0">
+    <ScrollView>
+        <VerticalStackLayout Padding="28,48,28,28" Spacing="14" MaximumWidthRequest="460">
+            <Image Source="logo.png" HeightRequest="140" WidthRequest="140" HorizontalOptions="Center" />
+            <Label Text="Cuadrilla de obra" FontSize="24" FontFamily="OpenSansSemibold" TextColor="#4A3728" HorizontalOptions="Center" />
+            <Label Text="Ingresá con el usuario y el PIN que te dio el estudio." FontSize="15" TextColor="#8D6E63"
+                   HorizontalTextAlignment="Center" Margin="0,0,0,12" />
+
+            <Border x:Name="AvisoBorde" IsVisible="False" BackgroundColor="#F6DCD8" StrokeThickness="0" Padding="12" StrokeShape="RoundRectangle 8">
+                <Label x:Name="AvisoTexto" TextColor="#8B2E21" FontSize="15" />
+            </Border>
+
+            <Label Text="Usuario" TextColor="#4A3728" FontFamily="OpenSansSemibold" FontSize="16" />
+            <Entry x:Name="Usuario" Placeholder="ej. pgomez" Keyboard="Plain" IsSpellCheckEnabled="False" IsTextPredictionEnabled="False"
+                   ReturnType="Next" FontSize="20" BackgroundColor="White" MinimumHeightRequest="56" AutomationId="usuario" />
+
+            <Label Text="PIN" TextColor="#4A3728" FontFamily="OpenSansSemibold" FontSize="16" />
+            <Entry x:Name="Pin" IsPassword="True" Keyboard="Numeric" ReturnType="Go" Completed="OnIngresar"
+                   FontSize="20" BackgroundColor="White" MinimumHeightRequest="56" AutomationId="pin" />
+
+            <Button x:Name="BotonIngresar" Text="Ingresar" Clicked="OnIngresar" Style="{StaticResource BotonGrande}" Margin="0,12,0,0" AutomationId="ingresar" />
+            <ActivityIndicator x:Name="Cargando" IsRunning="False" IsVisible="False" Color="#4A3728" />
+
+            <Label Text="Configurar servidor" TextColor="#8D6E63" FontSize="13" HorizontalOptions="Center" Margin="0,24,0,0" TextDecorations="Underline">
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnConfigurarServidor" />
+                </Label.GestureRecognizers>
+            </Label>
+            <Label x:Name="ServidorActual" FontSize="12" TextColor="#A08A7E" HorizontalOptions="Center" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

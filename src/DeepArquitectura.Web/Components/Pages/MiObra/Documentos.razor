@@ -1,0 +1,50 @@
+@page "/mi-obra/documentos"
+@inherits PaginaCliente
+@inject AppCliente App
+
+<PageTitle>Planos y documentos | Mi obra</PageTitle>
+
+<a class="volver" href="/mi-obra/mas">‹ Más</a>
+<h1>Planos y documentos</h1>
+
+@if (_docs.Count == 0)
+{
+    <p class="vacio">Todavía no hay documentos. Cuando el estudio suba planos, contrato o presupuestos, los vas a ver acá.</p>
+}
+@foreach (var g in _docs.GroupBy(d => d.Categoria))
+{
+    <h2>@Textos.Etiqueta(g.Key)</h2>
+    <ul class="lista">
+        @foreach (var d in g)
+        {
+            <li>
+                <a class="doc" href="/mi-obra/documentos/@d.Id" target="@(AccesoClientes.SeVeEnNavegador(d.ContentType) ? "_blank" : null)">
+                    <span class="doc-tipo">@Tipo(d)</span>
+                    <span>
+                        <strong>@d.Titulo</strong>
+                        <span class="suave chico">@Textos.Dia(d.CreadoEn) · @Tamano(d.Tamano)</span>
+                    </span>
+                </a>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private List<DocumentoObra> _docs = [];
+
+    protected override async Task CargarAsync() => _docs = await App.DocumentosAsync(ObraId);
+
+    private static string Tipo(DocumentoObra d) => Path.GetExtension(d.NombreOriginal ?? d.Ruta).TrimStart('.').ToUpperInvariant() switch
+    {
+        "JPEG" => "JPG",
+        var e when e.Length is > 0 and <= 4 => e,
+        _ => "DOC",
+    };
+
+    internal static string Tamano(long bytes) => bytes switch
+    {
+        < 1024 * 1024 => $"{Math.Max(1, bytes / 1024)} KB",
+        _ => $"{bytes / (1024d * 1024):0.#} MB",
+    };
+}

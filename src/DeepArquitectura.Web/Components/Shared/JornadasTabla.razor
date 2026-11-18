@@ -1,0 +1,74 @@
+@* Fichadas de entrada/salida con horas y link a la ubicación del teléfono (Google Maps). *@
+<table>
+    <thead>
+        <tr>
+            <th>Día</th>
+            @if (MostrarAlbanil) { <th>Albañil</th> }
+            @if (MostrarObra) { <th>Obra</th> }
+            <th>Entrada</th><th>Salida</th><th style="text-align:right">Horas</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var j in Jornadas)
+        {
+            <tr>
+                <td>@Textos.AHoraLocal(j.Entrada).ToString("ddd dd/MM", EsAr)</td>
+                @if (MostrarAlbanil) { <td><a href="/admin/albaniles/@j.AlbanilId">@j.Albanil?.Nombre</a></td> }
+                @if (MostrarObra) { <td><a href="/admin/obras/@j.ObraId">@j.Obra?.Codigo</a></td> }
+                <td>
+                    @Hora(j.Entrada) @Mapa(j.EntradaLatitud, j.EntradaLongitud, j.EntradaPrecision)
+                    @Lejos(j, j.EntradaDistanciaMetros)
+                    @if (j.EppFaltante is { Length: > 0 }) { <span class="chip chip-alerta" title="Elementos de protección que le faltaban">⛑ sin @j.EppFaltante</span> }
+                    else if (j.EppFaltante is not null) { <span title="Protección completa@(j.TrabajoEnAltura == true ? " (en altura, con arnés)" : "")">⛑✔</span> }
+                </td>
+                <td>
+                    @if (j.Salida is null)
+                    {
+                        <span class="chip @(DateTime.UtcNow - j.Entrada > TimeSpan.FromHours(14) ? "chip-alerta" : "chip-activo")">
+                            @(DateTime.UtcNow - j.Entrada > TimeSpan.FromHours(14) ? "sin salida" : "trabajando")
+                        </span>
+                    }
+                    else
+                    {
+                        @Hora(j.Salida.Value) @Mapa(j.SalidaLatitud, j.SalidaLongitud, j.SalidaPrecision) @Lejos(j, j.SalidaDistanciaMetros)
+                    }
+                </td>
+                <td style="text-align:right">@(j.Horas is null ? "—" : Textos.Numero((decimal)j.Horas.Value))</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
+
+    [Parameter, EditorRequired] public IReadOnlyList<JornadaAlbanil> Jornadas { get; set; } = [];
+    [Parameter] public bool MostrarAlbanil { get; set; } = true;
+    [Parameter] public bool MostrarObra { get; set; } = true;
+
+    /// <summary>Aviso si fichó más lejos que el radio de la obra.</summary>
+    private static RenderFragment Lejos(JornadaAlbanil j, int? metros) => b =>
+    {
+        if (metros is not int m || m <= (j.Obra?.RadioMetros ?? 150)) return;
+        b.OpenElement(0, "span");
+        b.AddAttribute(1, "class", "chip chip-alerta");
+        b.AddAttribute(2, "title", "Fichó lejos de la ubicación cargada para la obra");
+        b.AddContent(3, $"a {Geo.Texto(m)}");
+        b.CloseElement();
+    };
+
+    private static string Hora(DateTime utc) => Textos.AHoraLocal(utc).ToString("HH:mm", EsAr);
+
+    private static RenderFragment Mapa(double? lat, double? lon, double? precision) => b =>
+    {
+        if (lat is null || lon is null) return;
+        var punto = FormattableString.Invariant($"{lat:0.000000},{lon:0.000000}");
+        b.OpenElement(0, "a");
+        b.AddAttribute(1, "href", $"https://www.google.com/maps/search/?api=1&query={punto}");
+        b.AddAttribute(2, "target", "_blank");
+        b.AddAttribute(3, "rel", "noopener");
+        b.AddAttribute(4, "title", precision is null ? "Ubicación del teléfono" : $"Ubicación del teléfono (±{precision:0} m)");
+        b.AddContent(5, "📍");
+        b.CloseElement();
+    };
+}

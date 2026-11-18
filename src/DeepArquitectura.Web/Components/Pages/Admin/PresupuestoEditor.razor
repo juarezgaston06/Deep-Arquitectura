@@ -1,0 +1,489 @@
+@page "/admin/presupuestos/nuevo"
+@page "/admin/presupuestos/{Id:int}"
+@rendermode InteractiveServer
+@inject PresupuestoService Servicio
+
+<PageTitle>@(EsNuevo ? "Nuevo presupuesto" : _datos.Numero) | Deep Arquitectura</PageTitle>
+
+@if (_cargando)
+{
+    <p class="muted">Cargando…</p>
+}
+else if (_noEncontrado)
+{
+    <p class="muted">Presupuesto no encontrado. <a href="/admin/presupuestos">Volver</a></p>
+}
+else if (_version is null || _arancel is null)
+{
+    <div class="alert alert-error">No hay ninguna escala arancelaria cargada. <a href="/admin/aranceles">Cargar arancel →</a></div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>@(EsNuevo ? "Nuevo presupuesto" : $"Presupuesto {_datos.Numero}")</h1>
+            <p>Arancel: @_version.Nombre · vigencia @Textos.Fecha(_version.VigenteDesde) al @Textos.Fecha(_version.VigenteHasta)</p>
+        </div>
+        @if (!EsNuevo)
+        {
+            <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+                <span class="@Textos.ClaseEstado(_datos.Estado)">@_datos.Estado</span>
+                <a class="btn btn-outline" href="/admin/presupuestos/@Id/imprimir" target="_blank" data-enhance-nav="false">Imprimir / PDF</a>
+                <a class="btn btn-outline" href="@LinkWhatsApp" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+                @if (_datos.ObraId is int obraId)
+                {
+                    <a class="btn" href="/admin/obras/@obraId">Ver obra</a>
+                }
+                else
+                {
+                    <button class="btn" @onclick="CrearObra" disabled="@(_datos.ClienteId is null || _guardando)"
+                            title="@(_datos.ClienteId is null ? "Asigná un cliente para crear la obra" : "Marca el presupuesto como aceptado y crea la obra")">
+                        Aceptado → crear obra
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_mensaje is not null) { <div class="alert alert-ok">@_mensaje</div> }
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+    @if (_version.VigenteHasta < _datos.Fecha)
+    {
+        <div class="alert alert-error">
+            La escala arancelaria cargada venció el @Textos.Fecha(_version.VigenteHasta).
+            <a href="/admin/aranceles/nueva?desde=@_version.Id">Cargá la nueva escala del Colegio →</a>
+        </div>
+    }
+    @if (_vigente is not null && _vigente.Id != _version.Id)
+    {
+        <div class="alert alert-info">
+            Este presupuesto se calculó con «@_version.Nombre». Hay una escala más nueva: «@_vigente.Nombre».
+            <button class="btn-link" @onclick="UsarVigente">Recalcular con la vigente</button>
+        </div>
+    }
+
+    <div class="presu-layout">
+        <div>
+            @* ---------------- Datos ---------------- *@
+            <div class="card">
+                <h2>Datos</h2>
+                <div class="form-grid">
+                    <div class="field full">
+                        <label>Título *</label>
+                        <input @bind="_datos.Titulo" maxlength="200" placeholder="Ej: Vivienda unifamiliar — planos municipales y dirección" />
+                    </div>
+                    <div class="field">
+                        <label>Cliente</label>
+                        <select @bind="_datos.ClienteId">
+                            <option value="">— Sin cliente cargado —</option>
+                            @foreach (var c in _clientes)
+                            {
+                                <option value="@c.Id">@c.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_datos.ClienteId is null)
+                    {
+                        <div class="field">
+                            <label>Para (nombre)</label>
+                            <input @bind="_datos.Destinatario" maxlength="200" placeholder="A quién va dirigido" />
+                        </div>
+                    }
+                    <div class="field">
+                        <label>Ubicación de la obra</label>
+                        <input @bind="_datos.Ubicacion" maxlength="300" />
+                    </div>
+                    <div class="field">
+                        <label>Servicio</label>
+                        <select @bind="_datos.Servicio">
+                            @foreach (var s in Enum.GetValues<TipoServicio>())
+                            {
+                                <option value="@s">@Textos.Etiqueta(s)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Fecha</label>
+                        <input type="date" @bind="_datos.Fecha" />
+                    </div>
+                    <div class="field">
+                        <label>Validez (días)</label>
+                        <input type="number" min="1" max="365" @bind="_datos.ValidezDias" />
+                    </div>
+                    <div class="field">
+                        <label>Estado</label>
+                        <select @bind="_datos.Estado">
+                            @foreach (var s in Enum.GetValues<EstadoPresupuesto>())
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_datos.Estado == EstadoPresupuesto.Rechazado)
+                    {
+                        <div class="field">
+                            <label>¿Por qué se perdió?</label>
+                            <select @bind="_datos.MotivoPerdida">
+                                <option value="">Elegí un motivo</option>
+                                @foreach (var m in Enum.GetValues<MotivoPerdida>()) { <option value="@m">@Textos.Etiqueta(m)</option> }
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Detalle (opcional)</label>
+                            <input @bind="_datos.DetallePerdida" maxlength="1000" placeholder="Ej. otro estudio cotizó 30% menos" />
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ---------------- Plantillas ---------------- *@
+            <div class="card">
+                <h2>¿Qué vas a presupuestar?</h2>
+                <div class="quick">
+                    @foreach (var pl in PlantillasPresupuesto.Todas)
+                    {
+                        <button class="btn btn-sm btn-outline" @onclick="() => AplicarPlantilla(pl)">@pl.Nombre</button>
+                    }
+                </div>
+                <p class="muted">Marca las tareas típicas; después podés ajustar cada una abajo.</p>
+            </div>
+
+            @* ---------------- Monto de obra ---------------- *@
+            <div class="card">
+                <h2>Monto de obra</h2>
+                <p class="muted" style="margin-bottom:.75rem">
+                    m² × valor básico (@Textos.Moneda(_arancel.ValorBasico)) × coeficiente según uso y destino.
+                    Podés sumar varios destinos (ej. vivienda + cochera).
+                </p>
+                <table class="tabla-edit">
+                    <thead><tr><th>Uso y destino</th><th style="width:110px">m²</th><th style="width:110px">Coef.</th><th style="width:150px;text-align:right">Monto</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var s in _entrada.Superficies)
+                        {
+                            var coef = CalculadoraHonorarios.CoeficienteDe(_arancel, s);
+                            <tr>
+                                <td>
+                                    <select @bind="s.UsoCodigo">
+                                        @foreach (var g in _arancel.Usos.GroupBy(u => u.Grupo))
+                                        {
+                                            <optgroup label="@g.Key">
+                                                @foreach (var u in g)
+                                                {
+                                                    <option value="@u.Codigo">@u.Codigo · @u.Descripcion @(u.Coeficiente is null ? "(por presupuesto)" : $"— {u.Coeficiente:0.00}")</option>
+                                                }
+                                            </optgroup>
+                                        }
+                                    </select>
+                                </td>
+                                <td><input type="number" min="0" step="any" @bind="s.M2" /></td>
+                                <td><input type="number" min="0" step="0.01" @bind="s.CoeficienteManual" placeholder="@(_arancel.BuscarUso(s.UsoCodigo)?.Coeficiente?.ToString("0.00") ?? "—")" title="Dejalo vacío para usar el de la tabla (ampliaciones: otro coeficiente)" /></td>
+                                <td style="text-align:right">@(coef is null ? "—" : Textos.Moneda(CalculadoraHonorarios.Redondear(s.M2 * _arancel.ValorBasico * coef.Value)))</td>
+                                <td class="acciones">
+                                    @if (_entrada.Superficies.Count > 1)
+                                    {
+                                        <button class="btn-link btn-danger" @onclick="() => _entrada.Superficies.Remove(s)">Quitar</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="toolbar" style="margin:.75rem 0 0">
+                    <button class="btn btn-sm btn-outline" @onclick="() => _entrada.Superficies.Add(new())">+ Agregar destino</button>
+                </div>
+                <div class="form-grid" style="margin-top:1rem">
+                    <div class="field">
+                        <label>Monto de obra manual ($)</label>
+                        <input type="number" min="0" step="any" @bind="_entrada.MontoObraManual" placeholder="Opcional" />
+                        <span class="muted">Para obras «por presupuesto» (grupo 8, prefabricados). Reemplaza al cálculo por m².</span>
+                    </div>
+                </div>
+            </div>
+
+            @* ---------------- Proyecto y dirección ---------------- *@
+            <div class="card">
+                <h2>Proyecto y dirección técnica <span class="muted">(arts. 78 y 79)</span></h2>
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Tipo de obra</label>
+                        <select @bind="_entrada.TipoObra" @bind:after="() => _entrada.Clase = 0">
+                            <option value="@TipoObraArancel.Arquitectura">Arquitectura</option>
+                            <option value="@TipoObraArancel.Ingenieria">Ingeniería</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Clase</label>
+                        <select @bind="_entrada.Clase">
+                            @{ var clases = (_entrada.TipoObra == TipoObraArancel.Arquitectura ? _arancel.ProyectoArquitectura : _arancel.ProyectoIngenieria).Clases; }
+                            @for (var i = 0; i < clases.Count; i++)
+                            {
+                                <option value="@i">@clases[i]</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Documentación</label>
+                        <select @bind="_entrada.Proyecto">
+                            <option value="@NivelProyecto.Ninguno">Sin proyecto</option>
+                            <option value="@NivelProyecto.Croquis">Croquis (@_arancel.Art79.Croquis%)</option>
+                            <option value="@NivelProyecto.Anteproyecto">Anteproyecto (@_arancel.Art79.Anteproyecto%)</option>
+                            <option value="@NivelProyecto.ProyectoSinDetalles">Proyecto sin detalles (@_arancel.Art79.ProyectoSinDetalles%)</option>
+                            <option value="@NivelProyecto.ProyectoConDetalles">Proyecto con detalles (@_arancel.Art79.ProyectoConDetalles%)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="checks">
+                    <label><input type="checkbox" @bind="_entrada.DireccionTecnica" /> Dirección técnica (@_arancel.Art79.DireccionTecnica%)</label>
+                    <label title="Monumentales, edificios de más de 2 plantas, casas de lujo, etc.">
+                        <input type="checkbox" @bind="_entrada.PrimeraCategoria" /> Obra de 1ª categoría (+@_arancel.RecargoPrimeraCategoriaPct% planos de detalle)
+                    </label>
+                </div>
+            </div>
+
+            @* ---------------- Instalación ---------------- *@
+            <div class="card">
+                <h2>Instalación <span class="muted">(ingeniería de instalación, art. 78)</span></h2>
+                <div class="checks">
+                    <label><input type="checkbox" @bind="_entrada.IncluirInstalacion" /> Incluir proyecto y dirección de instalación</label>
+                </div>
+                @if (_entrada.IncluirInstalacion)
+                {
+                    <div class="form-grid" style="margin-top:.75rem">
+                        <div class="field">
+                            <label>Clase</label>
+                            <select @bind="_entrada.ClaseInstalacion">
+                                @for (var i = 0; i < _arancel.ProyectoInstalacion.Clases.Count; i++)
+                                {
+                                    <option value="@i">@_arancel.ProyectoInstalacion.Clases[i]</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Monto de la instalación ($)</label>
+                            <input type="number" min="0" step="any" @bind="_entrada.MontoInstalacion" />
+                        </div>
+                        <div class="field">
+                            <label>% a aplicar</label>
+                            <input type="number" min="0" max="200" step="any" @bind="_entrada.PorcentajeInstalacion" />
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* ---------------- Otras tareas ---------------- *@
+            <div class="card">
+                <h2>Otras tareas</h2>
+                <div class="checks">
+                    <label><input type="checkbox" @bind="_entrada.Relevamiento" /> Relevamiento (art. 63)</label>
+                    <label><input type="checkbox" @bind="_entrada.RepresentacionTecnica" /> Representación técnica (art. 116)</label>
+                    @if (_entrada.RepresentacionTecnica)
+                    {
+                        <label class="sub"><input type="checkbox" @bind="_entrada.ComitentePrivado" /> Comitente privado: −@_arancel.ReduccionComitentePrivadoPct% (art. 117)</label>
+                    }
+                    <label><input type="checkbox" @bind="_entrada.ConduccionTecnica" /> Conducción técnica (Res. 909 · @_arancel.ConduccionTecnicaPct% del monto)</label>
+                    <label><input type="checkbox" @bind="_entrada.InformeTecnico" /> Informe técnico (art. 109)</label>
+                    <label><input type="checkbox" @bind="_entrada.Diligenciamiento" /> Diligenciamiento de planos (art. 58 · @Textos.Moneda(_arancel.Fijos.Diligenciamiento))</label>
+                </div>
+                <div class="form-grid" style="margin-top:1rem">
+                    <div class="field"><label>Consultas sin inspección</label><input type="number" min="0" @bind="_entrada.ConsultasSinInspeccion" /></div>
+                    <div class="field"><label>Consultas con inspección</label><input type="number" min="0" @bind="_entrada.ConsultasConInspeccion" /></div>
+                    <div class="field"><label>Días en gabinete</label><input type="number" min="0" @bind="_entrada.DiasGabinete" /></div>
+                    <div class="field"><label>Días en terreno</label><input type="number" min="0" @bind="_entrada.DiasTerreno" /></div>
+                    <div class="field"><label>Días de viaje</label><input type="number" min="0" @bind="_entrada.DiasViaje" /></div>
+                </div>
+            </div>
+
+            @* ---------------- Gastos y ajustes ---------------- *@
+            <div class="card">
+                <h2>Gastos, aportes y ajustes</h2>
+                <div class="checks">
+                    <label><input type="checkbox" @bind="_entrada.Carpeta" /> Carpeta de liquidación (@Textos.Moneda(_arancel.Fijos.Carpeta))</label>
+                    <label><input type="checkbox" @bind="_entrada.ArancelAdministrativo" /> Arancel administrativo (@Textos.Moneda(_arancel.Fijos.ArancelAdministrativo))</label>
+                    <label><input type="checkbox" @bind="_entrada.RegistroDiferenciado" /> Registro de obra diferenciado (Res. 202)</label>
+                    @if (_entrada.RegistroDiferenciado)
+                    {
+                        <label class="sub"><input type="checkbox" @bind="_entrada.ExentoInteresSocial" /> Exento: vivienda de interés social (hasta 35 puntos)</label>
+                    }
+                </div>
+                <div class="form-grid" style="margin-top:1rem">
+                    <div class="field">
+                        <label>Bonificación sobre honorarios (%)</label>
+                        <input type="number" min="0" max="100" step="any" @bind="_entrada.BonificacionPct" />
+                    </div>
+                </div>
+
+                <h3 style="margin-top:1.25rem">Otros conceptos</h3>
+                @foreach (var x in _entrada.Extras)
+                {
+                    <div class="toolbar">
+                        <input @bind="x.Concepto" placeholder="Concepto (ej. copias, sellados, movilidad)" maxlength="200" style="flex:1" />
+                        <input type="number" step="any" @bind="x.Importe" style="min-width:140px;width:140px" />
+                        <label style="font-size:.85rem;display:flex;gap:.35rem;align-items:center"><input type="checkbox" @bind="x.EsHonorario" /> Es honorario</label>
+                        <button class="btn-link btn-danger" @onclick="() => _entrada.Extras.Remove(x)">Quitar</button>
+                    </div>
+                }
+                <button class="btn btn-sm btn-outline" @onclick="() => _entrada.Extras.Add(new())">+ Agregar concepto</button>
+
+                <div class="field full" style="margin-top:1.25rem">
+                    <label>Notas para el cliente</label>
+                    <textarea rows="3" @bind="_datos.Notas" maxlength="4000" placeholder="Forma de pago, qué incluye, plazos…"></textarea>
+                </div>
+            </div>
+        </div>
+
+        @* ---------------- Resumen ---------------- *@
+        <aside class="presu-resumen">
+            <div class="card">
+                <h2>Resumen</h2>
+                <div class="resumen-dato"><span>Superficie</span><strong>@Textos.Numero(Resultado.SuperficieTotal) m²</strong></div>
+                <div class="resumen-dato"><span>Monto de obra</span><strong>@Textos.Moneda(Resultado.MontoObra)</strong></div>
+
+                @foreach (var seccion in Resultado.Lineas.GroupBy(l => l.Seccion))
+                {
+                    <h3 style="margin-top:1rem">@seccion.Key</h3>
+                    @foreach (var l in seccion)
+                    {
+                        <div class="resumen-linea">
+                            <div>
+                                <div>@l.Concepto</div>
+                                @if (l.Detalle is not null) { <div class="muted">@l.Detalle</div> }
+                            </div>
+                            <strong>@Textos.Moneda(l.Importe)</strong>
+                        </div>
+                    }
+                    <div class="resumen-dato subtotal"><span>Subtotal</span><strong>@Textos.Moneda(seccion.Sum(l => l.Importe))</strong></div>
+                }
+
+                <div class="resumen-total"><span>Total</span><strong>@Textos.Moneda(Resultado.Total)</strong></div>
+
+                @foreach (var a in Resultado.Avisos)
+                {
+                    <div class="alert alert-info" style="margin-top:.75rem;margin-bottom:0">@a</div>
+                }
+
+                <div class="form-actions">
+                    <button class="btn" @onclick="GuardarAsync" disabled="@(_guardando || string.IsNullOrWhiteSpace(_datos.Titulo))">
+                        @(EsNuevo ? "Guardar presupuesto" : "Guardar cambios")
+                    </button>
+                    <a href="/admin/presupuestos">Volver</a>
+                </div>
+            </div>
+        </aside>
+    </div>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery] public int? ClienteId { get; set; }
+
+    private bool EsNuevo => Id is null;
+
+    private record ClienteOpcion(int Id, string Nombre, string? Localidad);
+    private List<ClienteOpcion> _clientes = [];
+
+    private Presupuesto _datos = new();
+    private PresupuestoEntrada _entrada = new();
+    private ArancelVersion? _version, _vigente;
+    private Arancel? _arancel;
+    private bool _cargando = true, _noEncontrado, _guardando;
+    private string? _mensaje, _error;
+
+    private ResultadoPresupuesto Resultado => CalculadoraHonorarios.Calcular(_arancel!, _entrada);
+
+    private string LinkWhatsApp =>
+        "https://wa.me/?text=" + Uri.EscapeDataString(
+            $"Hola {(_clientes.FirstOrDefault(c => c.Id == _datos.ClienteId)?.Nombre ?? _datos.Destinatario ?? "")}! " +
+            $"Te paso el presupuesto {_datos.Numero} «{_datos.Titulo}» por {Textos.Moneda(_datos.Total)}, válido hasta el {Textos.Fecha(_datos.VenceEl)}. " +
+            "Cualquier consulta quedo a disposición. — Deep Arquitectura");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _cargando = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _clientes = await db.Clientes.AsNoTracking().OrderBy(c => c.Nombre)
+            .Select(c => new ClienteOpcion(c.Id, c.Nombre, c.Localidad)).ToListAsync();
+        _vigente = await Servicio.VigenteAsync(Textos.HoyLocal());
+
+        if (EsNuevo)
+        {
+            _datos = new Presupuesto { Fecha = Textos.HoyLocal(), ValidezDias = 15, Servicio = TipoServicio.PlanosMunicipales };
+            if (ClienteId is int cid && _clientes.Any(c => c.Id == cid)) _datos.ClienteId = cid;
+            _entrada = new PresupuestoEntrada();
+            PlantillasPresupuesto.Todas[0].Aplicar(_entrada);
+            UsarVersion(_vigente);
+        }
+        else
+        {
+            var p = await db.Presupuestos.AsNoTracking().Include(x => x.ArancelVersion).FirstOrDefaultAsync(x => x.Id == Id);
+            _noEncontrado = p is null;
+            if (p is not null)
+            {
+                _datos = p;
+                _entrada = PresupuestoService.Deserializar<PresupuestoEntrada>(p.Parametros);
+                if (_entrada.Superficies.Count == 0) _entrada.Superficies.Add(new());
+                UsarVersion(p.ArancelVersion);
+            }
+        }
+        _cargando = false;
+    }
+
+    private void UsarVersion(ArancelVersion? v)
+    {
+        _version = v;
+        _arancel = v is null ? null : PresupuestoService.Deserializar<Arancel>(v.Contenido);
+        if (v is not null) _datos.ArancelVersionId = v.Id;
+    }
+
+    private void UsarVigente()
+    {
+        UsarVersion(_vigente);
+        _mensaje = "Recalculado con la escala vigente. Guardá para confirmar.";
+    }
+
+    private void AplicarPlantilla(PlantillasPresupuesto.Plantilla pl)
+    {
+        pl.Aplicar(_entrada);
+        _datos.Servicio = pl.Servicio;
+        _mensaje = null;
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_datos.Titulo)) return;
+        _guardando = true; _error = null; _mensaje = null;
+        try
+        {
+            var guardado = await Servicio.GuardarAsync(_datos, _entrada);
+            if (EsNuevo)
+            {
+                Nav.NavigateTo($"/admin/presupuestos/{guardado.Id}");
+                return;
+            }
+            _datos.Total = guardado.Total;
+            _mensaje = "Cambios guardados.";
+        }
+        catch (Exception ex)
+        {
+            _error = "No se pudo guardar: " + ex.Message;
+        }
+        finally { _guardando = false; }
+    }
+
+    private async Task CrearObra()
+    {
+        if (Id is not int id) return;
+        _guardando = true; _error = null;
+        try
+        {
+            // Guardar primero lo que esté en pantalla para que la obra tome el total actualizado.
+            await Servicio.GuardarAsync(_datos, _entrada);
+            var obraId = await Servicio.CrearObraAsync(id);
+            Nav.NavigateTo($"/admin/obras/{obraId}");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _guardando = false;
+        }
+    }
+}

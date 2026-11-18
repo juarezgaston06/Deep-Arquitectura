@@ -1,0 +1,100 @@
+@page "/admin/presupuestos"
+@rendermode InteractiveServer
+
+<PageTitle>Presupuestos | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Presupuestos</h1>
+        <p>Honorarios calculados con la escala arancelaria del Colegio.</p>
+    </div>
+    <div style="display:flex;gap:.75rem">
+        <a class="btn btn-outline" href="/admin/aranceles">Aranceles</a>
+        <a class="btn" href="/admin/presupuestos/nuevo">Nuevo presupuesto</a>
+    </div>
+</div>
+
+<div class="toolbar">
+    <input placeholder="Buscar por número, título o cliente…" @bind="_busqueda" @bind:event="oninput" @bind:after="CargarAsync" />
+    <select @bind="_estado" @bind:after="CargarAsync">
+        <option value="">Todos los estados</option>
+        @foreach (var s in Enum.GetValues<EstadoPresupuesto>())
+        {
+            <option value="@s">@s</option>
+        }
+    </select>
+</div>
+
+<div class="card">
+    @if (_lista is null)
+    {
+        <p class="muted">Cargando…</p>
+    }
+    else if (_lista.Count == 0)
+    {
+        <p class="empty">No hay presupuestos@(string.IsNullOrEmpty(_busqueda) && string.IsNullOrEmpty(_estado) ? " todavía" : " con ese filtro").</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Número</th><th>Fecha</th><th>Título</th><th>Para</th><th class="hide-mobile">Servicio</th>
+                    <th style="text-align:right">Total</th><th>Estado</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in _lista)
+                {
+                    <tr>
+                        <td><a href="/admin/presupuestos/@p.Id">@p.Numero</a></td>
+                        <td>@Textos.Fecha(p.Fecha)</td>
+                        <td>@p.Titulo</td>
+                        <td>@p.Para</td>
+                        <td class="hide-mobile">@Textos.Etiqueta(p.Servicio)</td>
+                        <td style="text-align:right">@Textos.Moneda(p.Total)</td>
+                        <td>
+                            <span class="@Textos.ClaseEstado(p.Estado)">@p.Estado</span>
+                            @if (p.Estado is EstadoPresupuesto.Borrador or EstadoPresupuesto.Enviado && p.Vence < Textos.HoyLocal())
+                            {
+                                <span class="chip chip-alerta">vencido</span>
+                            }
+                        </td>
+                        <td class="acciones">
+                            @if (p.ObraId is int obraId)
+                            {
+                                <a class="btn-link" href="/admin/obras/@obraId">Ver obra</a>
+                            }
+                            <a class="btn-link" href="/admin/presupuestos/@p.Id/imprimir" target="_blank" data-enhance-nav="false">Imprimir</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private record Fila(int Id, string Numero, DateOnly Fecha, DateOnly Vence, string Titulo, string Para, TipoServicio Servicio, decimal Total, EstadoPresupuesto Estado, int? ObraId);
+
+    private List<Fila>? _lista;
+    private string _busqueda = "";
+    private string _estado = "";
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var q = db.Presupuestos.AsNoTracking();
+        if (Enum.TryParse<EstadoPresupuesto>(_estado, out var estado)) q = q.Where(p => p.Estado == estado);
+        var b = _busqueda.Trim();
+        if (b.Length > 0)
+            q = q.Where(p => p.Numero.Contains(b) || p.Titulo.Contains(b)
+                || (p.Cliente != null && p.Cliente.Nombre.Contains(b)) || (p.Destinatario != null && p.Destinatario.Contains(b)));
+        var filas = await q.OrderByDescending(p => p.Fecha).ThenByDescending(p => p.Id).Take(200)
+            .Select(p => new { p.Id, p.Numero, p.Fecha, p.ValidezDias, p.Titulo, Cliente = p.Cliente != null ? p.Cliente.Nombre : null, p.Destinatario, p.Servicio, p.Total, p.Estado, p.ObraId })
+            .ToListAsync();
+        _lista = filas.Select(p => new Fila(p.Id, p.Numero, p.Fecha, p.Fecha.AddDays(p.ValidezDias), p.Titulo, p.Cliente ?? p.Destinatario ?? "—", p.Servicio, p.Total, p.Estado, p.ObraId)).ToList();
+    }
+}

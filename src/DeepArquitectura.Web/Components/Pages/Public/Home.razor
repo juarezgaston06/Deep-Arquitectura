@@ -1,0 +1,130 @@
+@page "/"
+
+<PageTitle>Deep Arquitectura | Diseño & Construcción</PageTitle>
+<HeadContent>
+    <meta name="description" content="Deep Arquitectura - Estudio de arquitectura especializado en planos municipales y relevamientos. Maestro Mayor de Obra.">
+    <style>
+        .hero-image {
+            background-image: url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&q=80&w=1600');
+        }
+    </style>
+</HeadContent>
+
+<SiteHeader>
+    <li><a href="#hero">Inicio</a></li>
+    <li><a href="#servicios">Servicios</a></li>
+    <li><a href="/electricidad">Electricidad</a></li>
+    <li><a href="/gas">Gas</a></li>
+    <li><a href="#sobre-mi">Sobre Mí</a></li>
+    <li><a href="#contacto">Contacto</a></li>
+</SiteHeader>
+
+<main>
+    <section id="hero" class="hero">
+        <div class="hero-content">
+            <h1 class="reveal">Arquitectura que <br><span class="highlight">respira</span> vida.</h1>
+            <p class="reveal delay-1">Estudio integral de arquitectura especializado en planos municipales y
+                relevamientos técnicos.</p>
+            <div class="hero-btns reveal delay-2">
+                <a href="#contacto" class="btn btn-primary">Iniciar Proyecto</a>
+                <a href="#servicios" class="btn btn-outline">Nuestros Servicios</a>
+            </div>
+        </div>
+        <div class="hero-image reveal fade-in"></div>
+        <div class="leaf-overlay"></div>
+    </section>
+
+    <section id="servicios" class="servicios">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2>Servicios Profesionales</h2>
+                <p>Soluciones técnicas y estéticas para cada etapa de tu construcción.</p>
+            </div>
+            <div class="services-grid">
+                <div class="service-card reveal">
+                    <div class="service-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </div>
+                    <h3>Planos Municipales</h3>
+                    <p>Gestión completa de documentación técnica y aprobación de planos ante organismos municipales.</p>
+                </div>
+                <div class="service-card reveal">
+                    <div class="service-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                    </div>
+                    <h3>Relevamientos</h3>
+                    <p>Medición y actualización de construcciones existentes para regularización y reformas.</p>
+                </div>
+                <div class="service-card reveal">
+                    <div class="service-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    </div>
+                    <h3>Diseño de Obra</h3>
+                    <p>Planificación y diseño arquitectónico adaptado a tus necesidades y al entorno natural.</p>
+                </div>
+                <div class="service-card reveal">
+                    <div class="service-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                        </svg>
+                    </div>
+                    <h3>Electricidad</h3>
+                    <p>Servicios integrales de electricidad, tableros y mantenimiento para tu hogar o empresa.</p>
+                    <a href="/electricidad" class="btn-text"
+                       style="color: var(--accent-brown); text-decoration: none; font-weight: 600; font-size: 0.8rem; margin-top: 1rem; display: inline-block;">Ver más →</a>
+                </div>
+                <div class="service-card reveal">
+                    <div class="service-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M12 2C7 2 3 7 3 12s4 10 9 10 9-5 9-10S17 2 12 2zM12 18c-3.3 0-6-2.7-6-6s2.7-6 6-6 6 2.7 6 6-2.7 6-6 6zM12 8v8M8 12h8" />
+                        </svg>
+                    </div>
+                    <h3>Instalaciones de Gas</h3>
+                    <p>Servicios matriculados de gas, planos, trámites y mantenimiento integral de artefactos.</p>
+                    <a href="/gas" class="btn-text"
+                       style="color: var(--accent-brown); text-decoration: none; font-weight: 600; font-size: 0.8rem; margin-top: 1rem; display: inline-block;">Ver más →</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="sobre-mi" class="sobre-mi">
+        <div class="container overflow-hidden">
+            <div class="about-flex">
+                <div class="about-image reveal slide-left">
+                    <div class="image-frame">
+                        <img src="@Assets["img/perfil.png"]" alt="Maestro Mayor de Obra" class="profile-photo">
+                    </div>
+                </div>
+                <div class="about-content reveal slide-right">
+                    <span class="subtitle">Maestro Mayor de Obra</span>
+                    <h2>Pasión por la <br>precisión técnica</h2>
+                    <p>Como Maestro Mayor de Obra, mi compromiso es materializar visiones arquitectónicas mediante
+                        una gestión técnica impecable. Mi enfoque combina la rigurosidad de la normativa municipal
+                        con un diseño funcional y estético.</p>
+                    <ul class="features">
+                        <li>Gestión técnica integral</li>
+                        <li>Calidad constructiva</li>
+                        <li>Respeto por el entorno</li>
+                    </ul>
+                    <div class="signature">
+                        <p class="name cursive">Gaston Eduardo Juarez Dover</p>
+                        <p class="role">Director Técnico | Deep Arquitectura</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <ContactSection Titulo="@((MarkupString)"Consulte por <br>su proyecto")"
+                    Texto="Estamos aquí para asesorarlo en cada paso del proceso municipal y constructivo."
+                    Placeholder="Cuéntenos sobre su proyecto"
+                    Boton="Enviar Mensaje"
+                    Area="AreaConsulta.General" />
+</main>

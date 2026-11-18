@@ -1,0 +1,108 @@
+@page "/admin/obras/nueva"
+@rendermode InteractiveServer
+@inject EstudioService Estudio
+
+<PageTitle>Nueva obra | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Nueva obra</h1>
+        <p>Las etapas se generan según el servicio y después se pueden ajustar.</p>
+    </div>
+</div>
+
+@if (_clientes.Count == 0 && !_cargando)
+{
+    <div class="alert alert-info">Primero cargá un cliente. <a href="/admin/clientes/nuevo">Nuevo cliente →</a></div>
+}
+else
+{
+    <div class="card">
+        <EditForm Model="_obra" OnValidSubmit="CrearAsync" FormName="obra-nueva">
+            <div class="form-grid">
+                <div class="field">
+                    <label>Cliente *</label>
+                    <InputSelect @bind-Value="_obra.ClienteId">
+                        <option value="0">— Elegí un cliente —</option>
+                        @foreach (var c in _clientes)
+                        {
+                            <option value="@c.Id">@c.Nombre</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="field">
+                    <label>Servicio *</label>
+                    <InputSelect @bind-Value="_obra.Servicio">
+                        @foreach (var s in Enum.GetValues<TipoServicio>())
+                        {
+                            <option value="@s">@Textos.Etiqueta(s)</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="field full">
+                    <label>Nombre de la obra *</label>
+                    <InputText @bind-Value="_obra.Nombre" placeholder="Ej: Ampliación vivienda — planos municipales" maxlength="200" />
+                </div>
+                <div class="field">
+                    <label>Dirección</label>
+                    <InputText @bind-Value="_obra.Direccion" maxlength="300" />
+                </div>
+                <div class="field">
+                    <label>Localidad</label>
+                    <InputText @bind-Value="_obra.Localidad" maxlength="120" />
+                </div>
+                <div class="field">
+                    <label>Presupuesto ($)</label>
+                    <InputNumber @bind-Value="_obra.MontoPresupuesto" />
+                </div>
+                <div class="field">
+                    <label>Entrega estimada</label>
+                    <InputDate @bind-Value="_obra.FechaEntregaEstimada" />
+                </div>
+                <div class="field full">
+                    <label>Descripción</label>
+                    <InputTextArea @bind-Value="_obra.Descripcion" rows="3" maxlength="4000" />
+                </div>
+            </div>
+
+            <h3 style="margin-top:1.25rem">Etapas que se van a crear</h3>
+            <ol style="margin-left:1.25rem" class="muted">
+                @foreach (var e in PlantillasEtapas.Para(_obra.Servicio))
+                {
+                    <li>@e</li>
+                }
+            </ol>
+
+            <div class="form-actions">
+                <button class="btn" type="submit" disabled="@(_obra.ClienteId == 0 || string.IsNullOrWhiteSpace(_obra.Nombre) || _guardando)">Crear obra</button>
+                <a href="/admin/obras">Cancelar</a>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] public int? ClienteId { get; set; }
+
+    private record ClienteOpcion(int Id, string Nombre);
+    private List<ClienteOpcion> _clientes = [];
+    private Obra _obra = new();
+    private bool _cargando = true, _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _clientes = await db.Clientes.AsNoTracking().OrderBy(c => c.Nombre)
+            .Select(c => new ClienteOpcion(c.Id, c.Nombre)).ToListAsync();
+        if (ClienteId is int id && _clientes.Any(c => c.Id == id)) _obra.ClienteId = id;
+        _cargando = false;
+    }
+
+    private async Task CrearAsync()
+    {
+        if (_obra.ClienteId == 0 || string.IsNullOrWhiteSpace(_obra.Nombre)) return;
+        _guardando = true;
+        var creada = await Estudio.CrearObraAsync(_obra);
+        Nav.NavigateTo($"/admin/obras/{creada.Id}");
+    }
+}

@@ -1,0 +1,119 @@
+@page "/seguimiento/{Token}"
+@layout DeepArquitectura.Web.Components.Layout.ImprimirLayout
+@inject PortalCliente Portal
+
+@* Portal del cliente: HTML estático (sin Blazor), solo lectura, sin nombres del personal ni montos. *@
+
+<PageTitle>@(_v?.Obra ?? "Seguimiento de obra") | Deep Arquitectura</PageTitle>
+
+<main style="max-width:960px;margin:0 auto;padding:1.25rem">
+    <header style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem">
+        <img src="/img/logo.png" alt="Deep Arquitectura" style="height:48px" />
+        <div><strong>Deep Arquitectura</strong><div class="muted">Seguimiento de obra</div></div>
+    </header>
+
+    @if (_v is null)
+    {
+        <div class="card"><p class="empty">Este link no existe o ya no está activo. Pedile uno nuevo al estudio.</p></div>
+    }
+    else
+    {
+        <div class="page-head">
+            <div>
+                <h1>@_v.Obra</h1>
+                <p>@_v.Localidad · <span class="@Textos.ClaseEstado(_v.Estado)">@Textos.Etiqueta(_v.Estado)</span>
+                    @if (_v.Actualizado is DateTime u) { <span> · última novedad @Textos.Fecha(u)</span> }</p>
+            </div>
+        </div>
+
+        <div class="kpis">
+            <div class="kpi"><div class="valor">@(_v.AvanceFisico is decimal fisico ? $"{fisico:0}%" : $"{_v.AvanceEtapas}%")</div><div class="label">Avance de obra</div></div>
+            <div class="kpi"><div class="valor">@_v.Etapas.Count(e => e.Estado == EstadoEtapa.Completada)/@_v.Etapas.Count</div><div class="label">Etapas terminadas</div></div>
+            @if (_v.EntregaEstimada is DateOnly ent) { <div class="kpi"><div class="valor">@Textos.Fecha(ent)</div><div class="label">Entrega estimada</div></div> }
+        </div>
+
+        @if (_v.Curva is { Puntos.Count: > 0 } curva)
+        {
+            <div class="card">
+                <h2>Cómo venimos</h2>
+                <CurvaAvance Puntos="curva.Puntos" />
+            </div>
+        }
+
+        <div class="card">
+            <h2>Etapas</h2>
+            <ul class="etapas">
+                @foreach (var (e, i) in _v.Etapas.Select((e, i) => (e, i + 1)))
+                {
+                    <li>
+                        <span class="orden">@i</span>
+                        <span class="nombre">@e.Nombre @if (e.Fin is not null) { <span class="muted"> · terminada @Textos.Fecha(e.Fin)</span> }</span>
+                        <span class="@Textos.ClaseEstado(e.Estado)">@Textos.Etiqueta(e.Estado)</span>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        @foreach (var p in _v.Puntos)
+        {
+            <div class="card">
+                <h2>@p.Nombre</h2>
+                @if (p.Fotos.Count >= 2)
+                {
+                    <div class="grid-2">
+                        @foreach (var (f, etiqueta) in new[] { (p.Fotos[0], "Al empezar"), (p.Fotos[^1], "Ahora") })
+                        {
+                            <div style="text-align:center">
+                                <a href="@Medio(f.MedioId)" target="_blank"><img src="@Medio(f.MedioId)" loading="lazy" style="max-width:100%;border-radius:8px" alt="@etiqueta" /></a>
+                                <div class="muted">@etiqueta · @Textos.Fecha(f.Fecha)</div>
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="medios" style="margin-top:.5rem">
+                    @foreach (var f in p.Fotos.AsEnumerable().Reverse().Take(12))
+                    {
+                        <a href="@Medio(f.MedioId)" target="_blank" title="@Textos.Fecha(f.Fecha)"><img src="@Medio(f.MedioId)" loading="lazy" alt="@p.Nombre" /></a>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (_v.Bitacora.Count > 0)
+        {
+            <div class="card">
+                <h2>Novedades</h2>
+                <ul class="timeline">
+                    @foreach (var e in _v.Bitacora)
+                    {
+                        <li>
+                            <div class="fecha">@Textos.Fecha(e.Fecha)@(e.Etapa is null ? "" : $" · {e.Etapa}")</div>
+                            <strong>@e.Titulo</strong>
+                            @if (e.Descripcion is not null) { <div>@e.Descripcion</div> }
+                            @if (e.Medios.Count > 0)
+                            {
+                                <div class="medios">
+                                    @foreach (var m in e.Medios)
+                                    {
+                                        @if (m.EsVideo) { <video src="@Medio(m.MedioId)" controls preload="metadata"></video> }
+                                        else { <a href="@Medio(m.MedioId)" target="_blank"><img src="@Medio(m.MedioId)" loading="lazy" alt="Foto de obra" /></a> }
+                                    }
+                                </div>
+                            }
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+        <p class="muted" style="font-size:.8rem">Link privado: no lo compartas. Consultas: escribile al estudio.</p>
+    }
+</main>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+    private PortalCliente.Vista? _v;
+
+    protected override async Task OnParametersSetAsync() => _v = await Portal.VistaAsync(Token);
+
+    private string Medio(int id) => $"/seguimiento/{Token}/medios/{id}";
+}

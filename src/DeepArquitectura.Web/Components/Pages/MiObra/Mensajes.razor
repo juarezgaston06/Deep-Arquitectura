@@ -1,0 +1,64 @@
+@page "/mi-obra/mensajes"
+@inherits PaginaCliente
+@inject AppCliente App
+
+<PageTitle>Mensajes | Mi obra</PageTitle>
+
+<h1>Mensajes con el estudio</h1>
+<p class="suave">Consultas, pedidos de cambio o lo que necesites. Te respondemos por acá.</p>
+
+<div class="chat" id="chat">
+    @if (_mensajes.Count == 0)
+    {
+        <p class="vacio">Todavía no hay mensajes. Escribinos lo que necesites.</p>
+    }
+    @foreach (var m in _mensajes)
+    {
+        <div class="burbuja @(m.DelCliente ? "mia" : "estudio")">
+            <span class="autor">@(m.DelCliente ? m.Autor ?? "Vos" : "Deep Arquitectura")</span>
+            <p>@m.Texto</p>
+            <span class="hora">@Textos.Fecha(m.Fecha)</span>
+        </div>
+    }
+    <span id="chat-fin"></span>
+</div>
+
+@if (_error is not null) { <div class="aviso aviso-error" role="alert">@_error</div> }
+@if (Ok is not null) { <div class="aviso aviso-ok" role="status">Mensaje enviado.</div> }
+
+<EditForm Model="Nuevo" FormName="mensaje" OnSubmit="EnviarAsync" class="tarjeta escribir" method="post">
+    <InputText type="hidden" @bind-Value="Nuevo.Ref" />
+    <label for="autor">Tu nombre</label>
+    <InputText id="autor" @bind-Value="Nuevo.Autor" maxlength="100" autocomplete="name" data-recordar="nombre" placeholder="Ej.: Laura" />
+    <label for="texto">Mensaje</label>
+    <InputTextArea id="texto" @bind-Value="Nuevo.Texto" rows="3" maxlength="@AppCliente.LargoMaximoMensaje" required placeholder="Escribí tu consulta…" />
+    <button type="submit" class="boton">Enviar</button>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm(FormName = "mensaje")] private Formulario? Nuevo { get; set; }
+    [SupplyParameterFromQuery] public string? Ok { get; set; }
+    private List<MensajeObra> _mensajes = [];
+    private string? _error;
+
+    public sealed class Formulario
+    {
+        public string? Ref { get; set; }
+        public string? Autor { get; set; }
+        public string? Texto { get; set; }
+    }
+
+    protected override async Task CargarAsync()
+    {
+        Nuevo ??= new();
+        Nuevo.Ref ??= Guid.NewGuid().ToString();
+        _mensajes = await App.MensajesAsync(ObraId);
+    }
+
+    private async Task EnviarAsync()
+    {
+        _error = await App.EnviarMensajeAsync(ObraId, Nuevo!.Autor, Nuevo.Texto, Guid.TryParse(Nuevo.Ref, out var r) ? r : null);
+        // Post/Redirect/Get: recargar la página no vuelve a mandar el mensaje.
+        if (_error is null) Nav.NavigateTo("/mi-obra/mensajes?ok=1#chat-fin");
+    }
+}

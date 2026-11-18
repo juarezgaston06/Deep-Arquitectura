@@ -1,0 +1,15 @@
+@* Lista con título que no se muestra si está vacía. *@
+@if (Items is { Count: > 0 })
+{
+    <div style="margin-top:.5rem">
+        <strong>@Titulo</strong>
+        <ul style="margin:.15rem 0 0 1rem">
+            @foreach (var i in Items) { <li>@i</li> }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public IReadOnlyList<string>? Items { get; set; }
+}

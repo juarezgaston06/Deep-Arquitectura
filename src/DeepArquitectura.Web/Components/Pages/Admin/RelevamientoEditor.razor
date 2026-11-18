@@ -1,0 +1,195 @@
+@page "/admin/relevamientos/nuevo"
+@page "/admin/relevamientos/{Id:int}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Relevamientos Svc
+@inject Adjuntos AdjuntosSvc
+@inject IJSRuntime JS
+
+<PageTitle>Relevamiento | Deep Arquitectura</PageTitle>
+
+@if (_r is null) { <p class="muted">Cargando…</p> return; }
+
+<div class="page-head">
+    <div>
+        <h1>@(Id is null ? "Nuevo relevamiento" : "Relevamiento del " + Textos.Fecha(_r.Fecha))</h1>
+        <p><a href="/admin/relevamientos">← Relevamientos</a></p>
+    </div>
+</div>
+
+@if (_error is not null) { <div class="alert alert-error">@_error</div> }
+@if (_ok is not null) { <div class="alert alert-ok">@_ok</div> }
+
+<div class="card">
+    <h2>Quién y dónde</h2>
+    <div class="form-grid">
+        <div class="field">
+            <label>Cliente</label>
+            <select @bind="_r.ClienteId">
+                <option value="">— Todavía no es cliente —</option>
+                @foreach (var c in _clientes) { <option value="@c.Id">@c.Nombre</option> }
+            </select>
+        </div>
+        @if (_r.ClienteId is null)
+        {
+            <div class="field"><label>Interesado</label><input @bind="_r.Contacto" maxlength="200" placeholder="Nombre" /></div>
+        }
+        <div class="field">
+            <label>Obra (si ya existe)</label>
+            <select @bind="_r.ObraId">
+                <option value="">— Sin obra —</option>
+                @foreach (var o in _obras.Where(o => _r.ClienteId is null || o.ClienteId == _r.ClienteId)) { <option value="@o.Id">@o.Codigo · @o.Nombre</option> }
+            </select>
+        </div>
+        <div class="field"><label>Fecha</label><input type="date" @bind="_r.Fecha" /></div>
+        <div class="field"><label>Dirección</label><input @bind="_r.Direccion" maxlength="300" /></div>
+        <div class="field"><label>Localidad</label><input @bind="_r.Localidad" maxlength="120" /></div>
+        <div class="field">
+            <label>Ubicación</label>
+            <button class="btn btn-sm btn-outline" @onclick="UbicacionAsync">Tomar del celular</button>
+            @if (_r.Latitud is double la && _r.Longitud is double lo) { <span class="muted">@la.ToString("0.00000"), @lo.ToString("0.00000")</span> }
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Terreno y construcción</h2>
+    <div class="form-grid">
+        <div class="field"><label>Frente (m)</label><input type="number" step="0.01" inputmode="decimal" @bind="_r.FrenteM" /></div>
+        <div class="field"><label>Fondo (m)</label><input type="number" step="0.01" inputmode="decimal" @bind="_r.FondoM" /></div>
+        <div class="field"><label>Sup. terreno (m²)</label><input type="number" step="0.01" inputmode="decimal" @bind="_r.SuperficieTerrenoM2" placeholder="frente × fondo" /></div>
+        <div class="field"><label>Sup. cubierta existente (m²)</label><input type="number" step="0.01" inputmode="decimal" @bind="_r.SuperficieCubiertaM2" /></div>
+        <div class="field"><label>Plantas</label><input type="number" min="0" inputmode="numeric" @bind="_r.Plantas" /></div>
+        <div class="field"><label>Antigüedad (años)</label><input type="number" min="0" inputmode="numeric" @bind="_r.AntiguedadAnios" /></div>
+        <div class="field">
+            <label>Estado general</label>
+            <select @bind="_r.EstadoGeneral">
+                <option value="">—</option>
+                @foreach (var e in Relevamientos.Estados) { <option value="@e">@e</option> }
+            </select>
+        </div>
+    </div>
+    <h3>Servicios</h3>
+    <div class="form-grid">
+        @foreach (var (nombre, get, set) in Servicios())
+        {
+            <div class="field">
+                <label>@nombre</label>
+                <select value="@SiNo(get())" @onchange="e => set(DeSiNo(e.Value))">
+                    <option value="">No se verificó</option><option value="si">Tiene</option><option value="no">No tiene</option>
+                </select>
+            </div>
+        }
+    </div>
+    <h3>Lo que se encontró</h3>
+    <div class="quick">
+        @foreach (var h in Relevamientos.HallazgosSugeridos)
+        {
+            <button class="@(_hallazgos.Contains(h) ? "btn btn-sm" : "btn btn-sm btn-outline")" @onclick="() => Alternar(h)">@h</button>
+        }
+    </div>
+</div>
+
+<div class="card">
+    <h2>Qué quiere el cliente</h2>
+    <div class="field"><label>Pedido</label><textarea rows="4" @bind="_r.Pedido" maxlength="4000" placeholder="Ej. ampliar un dormitorio y un baño en planta alta"></textarea></div>
+    <div class="form-grid">
+        <div class="field"><label>Presupuesto que tiene pensado ($)</label><input type="number" min="0" inputmode="numeric" @bind="_r.PresupuestoCliente" /></div>
+        <div class="field"><label>Plazo deseado</label><input @bind="_r.PlazoDeseado" maxlength="200" placeholder="Ej. antes de marzo" /></div>
+    </div>
+    <div class="field"><label>Notas</label><textarea rows="3" @bind="_r.Notas" maxlength="4000"></textarea></div>
+</div>
+
+<div class="form-actions">
+    <button class="btn" disabled="@_guardando" @onclick="GuardarAsync">@(Id is null ? "Guardar y agregar fotos" : "Guardar cambios")</button>
+    @if (Id is int)
+    {
+        @if (_r.ObraId is null && _r.ClienteId is int cli) { <a class="btn btn-outline" href="/admin/obras/nueva?clienteId=@cli">Crear obra para este cliente</a> }
+        <button class="btn-link btn-danger" @onclick="BorrarAsync">Borrar relevamiento</button>
+    }
+</div>
+
+@if (Id is int)
+{
+    <div class="card">
+        <h2>Fotos (@_r.Adjuntos.Count)</h2>
+        <SubirAdjuntos Texto="Sacar o elegir fotos" OnSubir="SubirAsync" />
+        <AdjuntosGaleria Items="_r.Adjuntos" OnBorrar="QuitarFotoAsync" />
+    </div>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "consulta")] public int? ConsultaId { get; set; }
+    [SupplyParameterFromQuery(Name = "cliente")] public int? ClienteQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "obra")] public int? ObraQuery { get; set; }
+
+    private Relevamiento? _r;
+    private HashSet<string> _hallazgos = [];
+    private List<Cliente> _clientes = [];
+    private List<Obra> _obras = [];
+    private string? _error, _ok;
+    private bool _guardando;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _clientes = await db.Clientes.AsNoTracking().OrderBy(c => c.Nombre).ToListAsync();
+        _obras = await db.Obras.AsNoTracking().OrderByDescending(o => o.CreadoEn).ToListAsync();
+        _r = Id is int id ? await Svc.ObtenerAsync(id) : await Svc.NuevoAsync(ConsultaId, ClienteQuery, ObraQuery);
+        if (_r is null) { _error = "El relevamiento no existe."; _r = new() { Fecha = Textos.HoyLocal() }; }
+        _hallazgos = Relevamientos.Hallazgos(_r).ToHashSet();
+    }
+
+    private IEnumerable<(string, Func<bool?>, Action<bool?>)> Servicios() =>
+    [
+        ("Agua", () => _r!.Agua, v => _r!.Agua = v), ("Luz", () => _r!.Luz, v => _r!.Luz = v),
+        ("Gas natural", () => _r!.Gas, v => _r!.Gas = v), ("Cloaca", () => _r!.Cloaca, v => _r!.Cloaca = v),
+    ];
+
+    private static string SiNo(bool? v) => v switch { true => "si", false => "no", _ => "" };
+    private static bool? DeSiNo(object? v) => v?.ToString() switch { "si" => true, "no" => false, _ => null };
+
+    private void Alternar(string h) { if (!_hallazgos.Remove(h)) _hallazgos.Add(h); }
+
+    private async Task UbicacionAsync()
+    {
+        try
+        {
+            var p = await JS.InvokeAsync<double[]?>("deepUbicacion");
+            if (p is { Length: 2 }) { _r!.Latitud = p[0]; _r.Longitud = p[1]; }
+            else _error = "El navegador no dio la ubicación (revisá el permiso).";
+        }
+        catch { _error = "El navegador no dio la ubicación (revisá el permiso)."; }
+    }
+
+    private async Task GuardarAsync()
+    {
+        _error = _ok = null; _guardando = true;
+        _r!.Hallazgos = string.Join(", ", _hallazgos);
+        var (id, error) = await Svc.GuardarAsync(_r);
+        _guardando = false;
+        if (error is not null) { _error = error; return; }
+        if (Id is null) { Nav.NavigateTo($"/admin/relevamientos/{id}"); return; }
+        _ok = "Guardado.";
+        _r = await Svc.ObtenerAsync(Id.Value);
+    }
+
+    private async Task<string?> SubirAsync(IReadOnlyCollection<Adjuntos.Archivo> archivos)
+    {
+        var error = await Svc.AgregarFotosAsync(Id!.Value, archivos);
+        if (error is null) _r = await Svc.ObtenerAsync(Id.Value);
+        return error;
+    }
+
+    private async Task QuitarFotoAsync(int adjuntoId)
+    {
+        await AdjuntosSvc.BorrarAsync(adjuntoId);
+        _r = await Svc.ObtenerAsync(Id!.Value);
+    }
+
+    private async Task BorrarAsync()
+    {
+        await Svc.BorrarAsync(Id!.Value);
+        Nav.NavigateTo("/admin/relevamientos");
+    }
+}

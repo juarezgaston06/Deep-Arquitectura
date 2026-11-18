@@ -1,0 +1,182 @@
+@page "/admin/albaniles"
+@rendermode InteractiveServer
+@inject AlbanilService Svc
+
+<PageTitle>Personal de obra | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Personal de obra</h1>
+        <p>Usuarios de la app de la cuadrilla (albañiles, ayudantes y subcontratistas de otros gremios). Cada uno es de un capataz y solo ve las obras de ese capataz que le asignás.</p>
+    </div>
+    @if (!_mostrarAlta)
+    {
+        <button class="btn" @onclick="AbrirAlta" disabled="@(_capataces.Count == 0)">+ Nueva persona</button>
+    }
+</div>
+
+@if (_capataces.Count == 0)
+{
+    <div class="alert alert-info">Primero cargá al menos un <a href="/admin/capataces">capataz</a>: cada albañil pertenece a su cuadrilla.</div>
+}
+
+@if (_pinCreado is not null)
+{
+    <div class="alert alert-ok">
+        Listo. Pasale estos datos al albañil para entrar a la app:
+        usuario <strong>@_usuarioCreado</strong> · PIN <strong style="font-size:1.1rem;letter-spacing:2px">@_pinCreado</strong>.
+        El PIN no se vuelve a mostrar (si se lo olvida, generale uno nuevo desde su ficha).
+    </div>
+}
+
+@if (_mostrarAlta)
+{
+    <div class="card">
+        <h2>Nueva persona</h2>
+        @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+        <div class="form-grid">
+            <div class="field"><label>Nombre y apellido</label><input @bind="_nombre" maxlength="150" /></div>
+            <div class="field"><label>Usuario para la app</label><input @bind="_usuario" maxlength="60" placeholder="ej. pgomez" /></div>
+            <div class="field"><label>Teléfono</label><input @bind="_telefono" maxlength="50" /></div>
+            <div class="field">
+                <label>Oficio</label>
+                <select @bind="_oficio">
+                    @foreach (var o in DeepArquitectura.Contracts.ValoresAlbanil.Oficios) { <option value="@o">@o</option> }
+                </select>
+            </div>
+            <div class="field"><label>Empresa (si es subcontratista)</label><input @bind="_empresa" maxlength="150" placeholder="vacío = personal propio" /></div>
+            <div class="field">
+                <label>Capataz (cuadrilla)</label>
+                <select value="@_capatazId" @onchange="CambiarCapataz">
+                    @foreach (var c in _capataces) { <option value="@c.Id">@c.Nombre</option> }
+                </select>
+            </div>
+            <div class="field">
+                <label>PIN (mín. @CapatazService.PinMinimo)</label>
+                <div style="display:flex;gap:.5rem">
+                    <input @bind="_pin" maxlength="@CapatazService.PinMaximo" />
+                    <button class="btn btn-sm btn-outline" type="button" @onclick="() => _pin = Capataces.GenerarPin()">Generar</button>
+                </div>
+            </div>
+            <div class="field full">
+                <label>Obras asignadas (de su capataz)</label>
+                <div class="checks">
+                    @foreach (var o in ObrasDelCapataz)
+                    {
+                        <label><input type="checkbox" checked="@_seleccion.Contains(o.Id)" @onchange="ev => Alternar(o.Id, ev.Value)" /> @o.Codigo · @o.Nombre</label>
+                    }
+                    @if (!ObrasDelCapataz.Any()) { <span class="muted">Ese capataz no tiene obras asignadas.</span> }
+                </div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn" @onclick="Crear">Crear usuario</button>
+            <button class="btn-link" @onclick="() => _mostrarAlta = false">Cancelar</button>
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="toolbar">
+        <select @bind="_filtroCapataz" @bind:after="CargarAsync">
+            <option value="0">Todas las cuadrillas</option>
+            @foreach (var c in _capataces) { <option value="@c.Id">Cuadrilla de @c.Nombre</option> }
+        </select>
+    </div>
+    @if (_lista.Count == 0)
+    {
+        <p class="empty">Todavía no cargaste personal.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Nombre</th><th>Capataz</th><th>Obras</th><th class="hide-mobile">Hoy</th><th class="hide-mobile">Último acceso</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var a in _lista)
+                {
+                    <tr>
+                        <td><a href="/admin/albaniles/@a.Id"><strong>@a.Nombre</strong></a><br /><span class="muted">@a.Usuario@(a.Oficio is null ? "" : $" · {a.Oficio}")@(a.Empresa is null ? "" : $" · {a.Empresa}")</span></td>
+                        <td><a href="/admin/capataces/@a.CapatazId">@a.Capataz</a></td>
+                        <td>@(a.Obras.Count == 0 ? "—" : string.Join(", ", a.Obras))</td>
+                        <td class="hide-mobile">@(a.EnObra ? "🟢 en obra" : "—")</td>
+                        <td class="hide-mobile">@(a.UltimoAcceso is null ? "nunca" : Textos.Fecha(a.UltimoAcceso.Value))</td>
+                        <td>@if (!a.Activo) { <span class="chip chip-apagado">desactivado</span> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private record Fila(int Id, string Nombre, string Usuario, string? Oficio, string? Empresa, int CapatazId, string Capataz, bool Activo, DateTime? UltimoAcceso, List<string> Obras, bool EnObra);
+    private record CapatazOpcion(int Id, string Nombre, List<ObraOpcion> Obras);
+    private record ObraOpcion(int Id, string Codigo, string Nombre);
+
+    private List<Fila> _lista = [];
+    private List<CapatazOpcion> _capataces = [];
+    private readonly HashSet<int> _seleccion = [];
+    private bool _mostrarAlta;
+    private int _capatazId, _filtroCapataz;
+    private string _nombre = "", _usuario = "", _telefono = "", _oficio = DeepArquitectura.Contracts.ValoresAlbanil.Oficios[0], _empresa = "", _pin = "";
+    private string? _error, _pinCreado, _usuarioCreado;
+
+    private IEnumerable<ObraOpcion> ObrasDelCapataz => _capataces.FirstOrDefault(c => c.Id == _capatazId)?.Obras ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _pin = Capataces.GenerarPin();
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var desde = DateTime.UtcNow.AddHours(-16);
+        _lista = await db.Albaniles.AsNoTracking()
+            .Where(a => _filtroCapataz == 0 || a.CapatazId == _filtroCapataz)
+            .OrderByDescending(a => a.Activo).ThenBy(a => a.Capataz.Nombre).ThenBy(a => a.Nombre)
+            .Select(a => new Fila(a.Id, a.Nombre, a.Usuario, a.Oficio, a.Empresa, a.CapatazId, a.Capataz.Nombre, a.Activo, a.UltimoAcceso,
+                a.Obras.Select(o => o.Obra.Codigo).ToList(),
+                db.Jornadas.Any(j => j.AlbanilId == a.Id && j.Salida == null && j.Entrada > desde)))
+            .ToListAsync();
+        _capataces = await db.Capataces.AsNoTracking().Where(c => c.Activo).OrderBy(c => c.Nombre)
+            .Select(c => new CapatazOpcion(c.Id, c.Nombre, c.Obras
+                .Where(o => o.Obra.Estado != EstadoObra.Finalizada && o.Obra.Estado != EstadoObra.Cancelada)
+                .OrderBy(o => o.Obra.Nombre)
+                .Select(o => new ObraOpcion(o.ObraId, o.Obra.Codigo, o.Obra.Nombre)).ToList()))
+            .ToListAsync();
+    }
+
+    private void AbrirAlta()
+    {
+        _mostrarAlta = true;
+        _pinCreado = null;
+        if (_capatazId == 0 && _capataces.Count > 0) _capatazId = _filtroCapataz != 0 ? _filtroCapataz : _capataces[0].Id;
+    }
+
+    private void CambiarCapataz(ChangeEventArgs ev)
+    {
+        _capatazId = int.TryParse(ev.Value?.ToString(), out var id) ? id : 0;
+        _seleccion.Clear();
+    }
+
+    private void Alternar(int obraId, object? valor)
+    {
+        if (valor is true) _seleccion.Add(obraId); else _seleccion.Remove(obraId);
+    }
+
+    private async Task Crear()
+    {
+        var (id, error) = await Svc.CrearAsync(_nombre, _usuario, _telefono, _oficio, _capatazId, _pin, _seleccion, _empresa);
+        _error = error;
+        if (id is null) return;
+        _pinCreado = _pin;
+        _usuarioCreado = CapatazService.NormalizarUsuario(_usuario);
+        _nombre = _usuario = _telefono = _empresa = "";
+        _pin = Capataces.GenerarPin();
+        _seleccion.Clear();
+        _mostrarAlta = false;
+        await CargarAsync();
+    }
+}

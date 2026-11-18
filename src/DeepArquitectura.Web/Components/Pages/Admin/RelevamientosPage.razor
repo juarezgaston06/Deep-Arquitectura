@@ -1,0 +1,41 @@
+@page "/admin/relevamientos"
+@rendermode InteractiveServer
+@inject Relevamientos Svc
+
+<PageTitle>Relevamientos | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Relevamientos</h1>
+        <p>Ficha de la primera visita al terreno o la casa: medidas, servicios, estado, fotos y lo que quiere el cliente. Se llena desde el celular.</p>
+    </div>
+    <a class="btn" href="/admin/relevamientos/nuevo">Nuevo relevamiento</a>
+</div>
+
+<div class="card">
+    @if (_lista is null) { <p class="muted">Cargando…</p> }
+    else if (_lista.Count == 0) { <p class="empty">Todavía no hay relevamientos. También se pueden empezar desde una consulta, un cliente o una obra.</p> }
+    else
+    {
+        <table>
+            <thead><tr><th>Fecha</th><th>Para</th><th>Dirección</th><th>Terreno</th><th>Obra</th></tr></thead>
+            <tbody>
+                @foreach (var r in _lista)
+                {
+                    <tr>
+                        <td><a href="/admin/relevamientos/@r.Id">@Textos.Fecha(r.Fecha)</a></td>
+                        <td>@(r.Cliente?.Nombre ?? r.Contacto)</td>
+                        <td>@r.Direccion @r.Localidad</td>
+                        <td>@(r.SuperficieTerrenoM2 is decimal s ? $"{Textos.Numero(s)} m²" : "—") · @(r.EstadoGeneral ?? "")</td>
+                        <td>@if (r.Obra is not null) { <a href="/admin/obras/@r.ObraId">@r.Obra.Codigo</a> } else { <span class="muted">—</span> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<Relevamiento>? _lista;
+    protected override async Task OnInitializedAsync() => _lista = await Svc.ListaAsync();
+}

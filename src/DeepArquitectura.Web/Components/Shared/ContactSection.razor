@@ -1,0 +1,44 @@
+@* Formulario de contacto: guarda la consulta en la base (POST /api/consultas) y abre WhatsApp, como antes. *@
+<section id="contacto" class="contacto">
+    <div class="container">
+        <div class="contact-card reveal">
+            <div class="contact-info">
+                <h2>@Titulo</h2>
+                <p>@Texto</p>
+                <div class="info-items">
+                    <div class="item">
+                        <strong>WhatsApp:</strong>
+                        <span>@Contacto.WhatsAppVisible</span>
+                    </div>
+                    <div class="item">
+                        <strong>Email:</strong>
+                        <span>@Contacto.Email</span>
+                    </div>
+                </div>
+            </div>
+            <form class="contact-form" data-area="@Area" data-whatsapp="@Contacto.WhatsAppNumero">
+                <div class="form-group">
+                    <input type="text" name="nombre" placeholder="Nombre completo" maxlength="200" required>
+                </div>
+                <div class="form-group">
+                    <input type="email" name="email" placeholder="Correo electrónico" maxlength="200" required>
+                </div>
+                <div class="form-group">
+                    <textarea name="mensaje" placeholder="@Placeholder" rows="4" maxlength="4000" required></textarea>
+                </div>
+                @* Honeypot anti-bots: invisible para personas. *@
+                <input type="text" name="sitio" tabindex="-1" autocomplete="off" aria-hidden="true"
+                       style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+                <button type="submit" class="btn btn-primary">@Boton</button>
+            </form>
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public MarkupString Titulo { get; set; }
+    [Parameter, EditorRequired] public string Texto { get; set; } = "";
+    [Parameter, EditorRequired] public string Placeholder { get; set; } = "";
+    [Parameter] public string Boton { get; set; } = "Enviar Consulta";
+    [Parameter] public AreaConsulta Area { get; set; } = AreaConsulta.General;
+}

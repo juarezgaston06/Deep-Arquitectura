@@ -1,0 +1,112 @@
+@page "/admin/resumen"
+@rendermode InteractiveServer
+@inject ResumenDiario Resumenes
+
+<PageTitle>Resumen del día | Deep Arquitectura</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Resumen del día</h1>
+        <p>Todo lo que entró desde las obras, con lo urgente primero.</p>
+    </div>
+    <div class="toolbar" style="margin:0">
+        <button class="btn btn-sm btn-outline" @onclick="() => Mover(-1)">‹</button>
+        <input type="date" @bind="_fecha" @bind:after="CargarAsync" />
+        <button class="btn btn-sm btn-outline" @onclick="() => Mover(1)" disabled="@(_fecha >= Textos.HoyLocal())">›</button>
+    </div>
+</div>
+
+@if (_obras is null)
+{
+    <p class="muted">Cargando…</p>
+}
+else
+{
+    var alertas = _obras.SelectMany(o => o.Alertas.Select(a => (Obra: o, Alerta: a))).OrderByDescending(x => x.Alerta.Nivel).ToList();
+    @if (alertas.Count > 0)
+    {
+        <div class="card">
+            <h2>Para atender</h2>
+            <ul style="margin:0 0 0 1rem">
+                @foreach (var (o, a) in alertas.Where(x => x.Alerta.Nivel > 0))
+                {
+                    <li><span class="@(a.Nivel == 2 ? "chip chip-alerta" : "chip")">@(a.Nivel == 2 ? "urgente" : "atender")</span> <a href="/admin/obras/@o.Id">@o.Codigo</a> · @a.Texto</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @if (Resumenes.ConIA)
+    {
+        <div class="card">
+            <h2>En pocas palabras</h2>
+            @if (_texto is null)
+            {
+                <button class="btn btn-sm" @onclick="Redactar" disabled="@_redactando">@(_redactando ? "Redactando…" : "Redactar resumen con IA")</button>
+            }
+            else
+            {
+                <div style="white-space:pre-line">@_texto</div>
+            }
+        </div>
+    }
+
+    @foreach (var o in _obras.Where(o => !o.SinActividad || o.Alertas.Count > 0))
+    {
+        <div class="card">
+            <h2><a href="/admin/obras/@o.Id">@o.Nombre</a> <span class="muted">@o.Codigo</span>
+                @if (o.Clima is not null) { <span title="@ClimaService.Descripcion(o.Clima.CodigoTiempo)"> @ClimaService.Icono(o.Clima.CodigoTiempo) @($"{o.Clima.TempMax:0}° · {o.Clima.LluviaMm:0.#} mm")</span> }
+            </h2>
+            <p>
+                <strong>@o.Presentes.Count</strong> en obra (@Textos.Numero((decimal)o.HorasTotales) h)@(o.Presentes.Count > 0 ? ": " + string.Join(", ", o.Presentes.Select(p => p.Nombre)) : "")
+                · 📷 @o.Fotos 🎥 @o.Videos
+                @if (o.PorValidar > 0) { <span> · <a href="/admin/campo?tab=validar&obraId=@o.Id">@o.PorValidar por validar</a></span> }
+            </p>
+            <Lista Titulo="Avances" Items="o.Avances" />
+            <Lista Titulo="Problemas nuevos" Items="o.ProblemasNuevos" />
+            <Lista Titulo="Pedidos de material" Items="o.PedidosNuevos" />
+            <Lista Titulo="Material recibido" Items="o.Recepciones" />
+            <Lista Titulo="Controles observados" Items="o.ControlesObservados" />
+            <Lista Titulo="Notas de pedido" Items="o.NotasPedido" />
+            <Lista Titulo="Tareas atrasadas" Items="o.Atrasadas" />
+        </div>
+    }
+    @if (_obras.All(o => o.SinActividad && o.Alertas.Count == 0))
+    {
+        <div class="card"><p class="empty">Ese día no entró nada desde las obras.</p></div>
+    }
+    @if (_obras.Any(o => o.SinActividad && o.Alertas.Count == 0))
+    {
+        <p class="muted">Sin actividad: @string.Join(", ", _obras.Where(o => o.SinActividad && o.Alertas.Count == 0).Select(o => o.Codigo)).</p>
+    }
+}
+
+@code {
+    private DateOnly _fecha = Textos.HoyLocal();
+    private List<ResumenDiario.Obra>? _obras;
+    private string? _texto;
+    private bool _redactando;
+
+    protected override Task OnInitializedAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _texto = null;
+        _obras = await Resumenes.GenerarAsync(_fecha);
+    }
+
+    private Task Mover(int dias)
+    {
+        _fecha = _fecha.AddDays(dias);
+        return CargarAsync();
+    }
+
+    private async Task Redactar()
+    {
+        if (_obras is null) return;
+        _redactando = true;
+        try { _texto = await Resumenes.RedactarAsync(_fecha, _obras) ?? "No hubo nada para resumir."; }
+        catch (Exception) { _texto = "No se pudo redactar ahora (falló la conexión con la IA). El resumen de abajo está completo."; }
+        finally { _redactando = false; }
+    }
+}

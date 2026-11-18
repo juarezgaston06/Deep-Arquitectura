@@ -1,0 +1,45 @@
+<?xml version = "1.0" encoding = "UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DeepArquitectura.Albanil.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
+                <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <!-- Botones grandes para usar con guantes y a pleno sol -->
+            <Style x:Key="BotonGrande" TargetType="Button">
+                <Setter Property="FontSize" Value="19" />
+                <Setter Property="FontFamily" Value="OpenSansSemibold" />
+                <Setter Property="MinimumHeightRequest" Value="64" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="BackgroundColor" Value="#4A3728" />
+                <Setter Property="TextColor" Value="White" />
+                <Setter Property="Padding" Value="12,8" />
+            </Style>
+            <Style x:Key="BotonClaro" TargetType="Button" BasedOn="{StaticResource BotonGrande}">
+                <Setter Property="BackgroundColor" Value="White" />
+                <Setter Property="TextColor" Value="#4A3728" />
+                <Setter Property="BorderColor" Value="#4A3728" />
+                <Setter Property="BorderWidth" Value="2" />
+            </Style>
+            <Style x:Key="Titulo" TargetType="Label">
+                <Setter Property="FontSize" Value="22" />
+                <Setter Property="FontFamily" Value="OpenSansSemibold" />
+                <Setter Property="TextColor" Value="#4A3728" />
+            </Style>
+            <Style x:Key="Etiqueta" TargetType="Label">
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="FontFamily" Value="OpenSansSemibold" />
+                <Setter Property="TextColor" Value="#4A3728" />
+            </Style>
+            <Style x:Key="Tarjeta" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="White" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="Padding" Value="16" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

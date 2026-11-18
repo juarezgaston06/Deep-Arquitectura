@@ -1,0 +1,66 @@
+@page "/mi-obra/garantia"
+@inherits PaginaCliente
+@inject Postventa Svc
+
+<PageTitle>Garantía | Mi obra</PageTitle>
+
+<a class="volver" href="/mi-obra/mas">‹ Más</a>
+<h1>Reclamos y garantía</h1>
+@if (_hasta is DateOnly h) { <p class="suave">Tu garantía corre hasta el @Textos.Fecha(h).</p> }
+else { <p class="suave">Si ves algún problema en la obra, contanos con fotos y lo revisamos.</p> }
+
+<AvisoPantalla />
+
+<form method="post" action="/mi-obra/reclamos" enctype="multipart/form-data" class="tarjeta escribir">
+    <AntiforgeryToken />
+    <input type="hidden" name="ref" value="@Guid.NewGuid()" />
+    <strong>Contanos qué pasa</strong>
+    <label for="rubro">Tipo de problema</label>
+    <select id="rubro" name="rubro" required>
+        <option value="">Elegí…</option>
+        @foreach (var r in Postventa.Rubros) { <option value="@r">@r</option> }
+    </select>
+    <label for="ubicacion">¿Dónde?</label>
+    <input id="ubicacion" name="ubicacion" maxlength="150" placeholder="Ej.: pared del dormitorio, lado de la ventana" />
+    <label for="descripcion">¿Qué ves?</label>
+    <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000" required placeholder="Ej.: apareció una mancha de humedad que crece cuando llueve"></textarea>
+    <label for="fotos">Fotos (hasta @Adjuntos.MaximoPorEnvio)</label>
+    <input id="fotos" name="fotos" type="file" accept="image/*" capture="environment" multiple />
+    <label><input type="checkbox" name="urgente" value="si" /> Es urgente (pérdida de agua o gas, riesgo eléctrico)</label>
+    <label for="nombre">Tu nombre</label>
+    <input id="nombre" name="nombre" maxlength="120" autocomplete="name" data-recordar="nombre" />
+    <button type="submit" class="boton">Enviar</button>
+    <p class="suave chico">Ante olor a gas: cerrá la llave de paso, ventilá y llamá a la emergencia de la distribuidora.</p>
+</form>
+
+@if (_reclamos.Count > 0)
+{
+    <h2>Tus reclamos</h2>
+    <ul class="lista">
+        @foreach (var r in _reclamos)
+        {
+            <li class="columna">
+                <div>
+                    <strong>@r.Rubro</strong>
+                    <span class="chip @(r.Estado switch { EstadoReclamo.Resuelto => "chip-ok", EstadoReclamo.Nuevo => "chip-alerta", _ => "" })">@Textos.Etiqueta(r.Estado)</span>
+                    <span class="suave chico">@Textos.Dia(r.Fecha) · @r.Ubicacion</span>
+                    <span class="chico">@r.Descripcion</span>
+                    @if (r.FechaVisita is DateOnly v && r.Estado == EstadoReclamo.Programado) { <span class="chico"><b>Visita:</b> @Textos.Fecha(v)</span> }
+                    @if (r.Respuesta is not null) { <span class="chico"><b>Respuesta del estudio:</b> @r.Respuesta</span> }
+                </div>
+                <AdjuntosGaleria Items="r.Adjuntos" Base="/mi-obra/adjuntos" />
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private List<ReclamoGarantia> _reclamos = [];
+    private DateOnly? _hasta;
+
+    protected override async Task CargarAsync()
+    {
+        _reclamos = await Svc.ReclamosAsync(ObraId);
+        _hasta = Postventa.GarantiaHasta(await Svc.ActaAsync(ObraId, paraCliente: true));
+    }
+}

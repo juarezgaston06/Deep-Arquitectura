@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DeepArquitectura.Web</RootNamespace>
+    <UserSecretsId>5d1b7c2e-8a7f-4f3e-9d61-3c0a2b9e4f17</UserSecretsId>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DeepArquitectura.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeepArquitectura.Contracts\DeepArquitectura.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Datos -->
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.6.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.14" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Transitiva de Microsoft.Data.SqlClient con CVEs en versiones viejas (mismo criterio que FarmHome). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+
+    <!-- Fotos y videos de obra (app del capataz) -->
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.30.1" />
+
+    <!-- Agente Community Manager (mismo stack que TurnoBot) -->
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.12.0" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- La guía de marca vive en /marketing (la usa también el agente de Claude Code).
+         Se copia al publish para que el agente de la app lea la misma fuente de verdad. -->
+    <Content Include="..\..\marketing\marca.md" Link="Agents\marca.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

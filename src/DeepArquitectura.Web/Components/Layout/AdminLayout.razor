@@ -1,0 +1,46 @@
+@inherits LayoutComponentBase
+
+<AuthorizeView>
+    <Authorized>
+        <div class="admin-shell">
+            <nav class="admin-nav">
+                <div class="brand">
+                    <img src="@Assets["img/logo.png"]" alt="Deep Arquitectura">
+                    <span>Panel</span>
+                </div>
+                <NavLink href="/admin" Match="NavLinkMatch.All">Inicio</NavLink>
+                <NavLink href="/admin/consultas">Consultas</NavLink>
+                <NavLink href="/admin/relevamientos">Relevamientos</NavLink>
+                <NavLink href="/admin/clientes">Clientes</NavLink>
+                <NavLink href="/admin/presupuestos">Presupuestos</NavLink>
+                <NavLink href="/admin/obras">Obras</NavLink>
+                <NavLink href="/admin/app-cliente">App del cliente</NavLink>
+                <NavLink href="/admin/postventa">Garantía y pagos informados</NavLink>
+                <NavLink href="/admin/capataces">Capataces</NavLink>
+                <NavLink href="/admin/albaniles">Personal de obra</NavLink>
+                <NavLink href="/admin/campo">En obra</NavLink>
+                <NavLink href="/admin/resumen">Resumen del día</NavLink>
+                <NavLink href="/admin/rendimientos">Rendimientos</NavLink>
+                <NavLink href="/admin/indicadores">Indicadores</NavLink>
+                <NavLink href="/admin/redes">Redes (Agente CM)</NavLink>
+                <div class="spacer"></div>
+                <a href="/" data-enhance-nav="false" target="_blank">Ver sitio ↗</a>
+                <NavLink href="/admin/cuenta">Cambiar contraseña</NavLink>
+                <form method="post" action="/cuenta/logout" data-enhance="false">
+                    <AntiforgeryToken />
+                    <button type="submit">Cerrar sesión</button>
+                </form>
+            </nav>
+            <main class="admin-main">
+                @Body
+            </main>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        @Body
+    </NotAuthorized>
+</AuthorizeView>
+
+<div id="blazor-error-ui" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#f6dcd8;padding:.75rem 1rem;z-index:1000">
+    Ocurrió un error inesperado. <a href="" class="reload">Recargar</a>
+</div>

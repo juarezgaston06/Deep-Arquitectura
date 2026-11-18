@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Contratos de la API /api/app compartidos entre el servidor y la app Android del capataz. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DeepArquitectura.Contracts</RootNamespace>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,69 @@
+@page "/admin/certificados/{Id:int}/imprimir"
+@layout ImprimirLayout
+
+<PageTitle>Certificado | Deep Arquitectura</PageTitle>
+
+@if (_c is null)
+{
+    <p>Certificado no encontrado.</p>
+}
+else
+{
+    <div class="print-bar no-print">
+        <button class="btn" onclick="window.print()">Imprimir / Guardar como PDF</button>
+        <a class="btn-link" href="/admin/obras/@_c.ObraId/certificados">Volver</a>
+    </div>
+    <article class="doc">
+        <header class="doc-head">
+            <div class="doc-estudio">
+                <img src="/img/logo.png" alt="Deep Arquitectura" style="height:56px" />
+                <div><strong>Deep Arquitectura</strong></div>
+            </div>
+            <div class="doc-num">
+                <div>Certificado de avance de obra</div>
+                <strong>N° @_c.Numero</strong>
+                <div>@Textos.Fecha(_c.Fecha)</div>
+            </div>
+        </header>
+        <section class="doc-datos">
+            <div><strong>Obra:</strong> @_c.Obra.Nombre (@_c.Obra.Codigo)</div>
+            <div><strong>Cliente:</strong> @_c.Obra.Cliente.Nombre</div>
+            @if (_c.Obra.Direccion is not null) { <div><strong>Ubicación:</strong> @_c.Obra.Direccion @_c.Obra.Localidad</div> }
+        </section>
+        <table class="doc-tabla">
+            <thead><tr><th>Tarea</th><th class="importe">Incidencia</th><th class="importe">Anterior</th><th class="importe">Actual</th><th class="importe">Período</th></tr></thead>
+            <tbody>
+                @foreach (var r in _detalle)
+                {
+                    <tr>
+                        <td>@r.Tarea @if (r.Etapa is not null) { <div class="doc-detalle">@r.Etapa</div> }</td>
+                        <td class="importe">@Textos.Numero(r.Peso)%</td>
+                        <td class="importe">@Textos.Numero(r.AvanceAnterior * 100)%</td>
+                        <td class="importe">@Textos.Numero(r.AvanceActual * 100)%</td>
+                        <td class="importe">@Textos.Numero(r.IncidenciaPeriodo)%</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="doc-total"><span>Avance acumulado</span><strong>@Textos.Numero(_c.PorcentajeAcumulado)%</strong></div>
+        <div class="doc-total"><span>Certificado anterior</span><strong>@Textos.Numero(_c.PorcentajeAnterior)%</strong></div>
+        <div class="doc-total"><span>Avance de este certificado</span><strong>@Textos.Numero(_c.PorcentajeAcumulado - _c.PorcentajeAnterior)%</strong></div>
+        <div class="doc-total"><span>Monto de obra</span><strong>@Textos.Moneda(_c.MontoObra)</strong></div>
+        <div class="doc-total"><span>Importe a abonar</span><strong>@Textos.Moneda(_c.Monto)</strong></div>
+        @if (_c.Notas is not null) { <section class="doc-notas"><h2>Observaciones</h2><p>@_c.Notas</p></section> }
+        <footer class="doc-pie">El avance certificado corresponde a trabajos verificados en obra.</footer>
+    </article>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Certificado? _c;
+    private List<AvanceObra.RenglonCertificado> _detalle = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _c = await db.Certificados.AsNoTracking().Include(c => c.Obra).ThenInclude(o => o.Cliente).SingleOrDefaultAsync(c => c.Id == Id);
+        _detalle = _c is null ? [] : AvanceObra.Detalle(_c);
+    }
+}

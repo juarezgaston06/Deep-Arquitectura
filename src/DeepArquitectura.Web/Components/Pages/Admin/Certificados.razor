@@ -1,0 +1,141 @@
+@page "/admin/obras/{Id:int}/certificados"
+@rendermode InteractiveServer
+@inject AvanceObra Avance
+
+<PageTitle>Certificados | Deep Arquitectura</PageTitle>
+
+@if (_obra is null)
+{
+    <p class="muted">Cargando…</p>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>Certificados de avance</h1>
+            <p><a href="/admin/obras/@Id">@_obra.Codigo · @_obra.Nombre</a> · avance físico <strong>aprobado</strong> por el capataz o el estudio × monto de la obra (@Textos.Moneda(_obra.MontoPresupuesto)).</p>
+        </div>
+    </div>
+
+    @if (_mensaje is not null) { <div class="alert alert-ok">@_mensaje</div> }
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+
+    <div class="card">
+        <h2>Próximo certificado</h2>
+        @if (_vista is null)
+        {
+            <p class="empty">@_motivo</p>
+        }
+        else
+        {
+            <div class="kpis">
+                <div class="kpi"><div class="valor">N° @_vista.Numero</div><div class="label">Certificado</div></div>
+                <div class="kpi"><div class="valor">@Textos.Numero(_vista.PorcentajeAcumulado)%</div><div class="label">Avance acumulado</div></div>
+                <div class="kpi"><div class="valor">@Textos.Numero(_vista.PorcentajePeriodo)%</div><div class="label">De este período</div></div>
+                <div class="kpi"><div class="valor">@Textos.Moneda(_vista.Monto)</div><div class="label">A certificar</div></div>
+            </div>
+            <table>
+                <thead><tr><th>Tarea</th><th style="text-align:right">Peso</th><th style="text-align:right">Anterior</th><th style="text-align:right">Actual</th><th style="text-align:right">Incidencia período</th></tr></thead>
+                <tbody>
+                    @foreach (var r in _vista.Renglones)
+                    {
+                        <tr>
+                            <td>@r.Tarea <span class="muted">@r.Etapa</span></td>
+                            <td style="text-align:right">@Textos.Numero(r.Peso)%</td>
+                            <td style="text-align:right">@Textos.Numero(r.AvanceAnterior * 100)%</td>
+                            <td style="text-align:right">@Textos.Numero(r.AvanceActual * 100)%</td>
+                            <td style="text-align:right">@Textos.Numero(r.IncidenciaPeriodo)%</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (_porValidar > 0)
+            {
+                <div class="alert alert-info" style="margin-top:.75rem">Hay @_porValidar avance(s) sin validar que no entran. <a href="/admin/campo?tab=validar&obraId=@Id">Validarlos</a>.</div>
+            }
+            <div class="form-grid" style="margin-top:.75rem">
+                <div class="field full"><label>Notas (opcional)</label><textarea rows="2" maxlength="2000" @bind="_notas"></textarea></div>
+            </div>
+            <div class="form-actions"><button class="btn" @onclick="Emitir" disabled="@(_vista.PorcentajePeriodo <= 0)">Emitir certificado N° @_vista.Numero</button></div>
+        }
+    </div>
+
+    <div class="card">
+        <h2>Emitidos</h2>
+        @if (_certificados.Count == 0) { <p class="empty">Todavía no hay certificados.</p> }
+        else
+        {
+            <table>
+                <thead><tr><th>N°</th><th>Fecha</th><th style="text-align:right">Acumulado</th><th style="text-align:right">Monto</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var c in _certificados)
+                    {
+                        <tr>
+                            <td>@c.Numero</td>
+                            <td>@Textos.Fecha(c.Fecha)</td>
+                            <td style="text-align:right">@Textos.Numero(c.PorcentajeAcumulado)%</td>
+                            <td style="text-align:right">@Textos.Moneda(c.Monto)</td>
+                            <td><span class="chip @(c.Estado == EstadoCertificado.Cobrado ? "chip-ok" : "chip-activo")">@c.Estado</span></td>
+                            <td class="acciones">
+                                <a class="btn-link" href="/admin/certificados/@c.Id/imprimir" target="_blank">Imprimir / PDF</a>
+                                @if (c.Estado != EstadoCertificado.Cobrado)
+                                {
+                                    <select @bind="_medio" style="width:auto">
+                                        @foreach (var m in Enum.GetValues<MedioPago>()) { <option value="@m">@m</option> }
+                                    </select>
+                                    <button class="btn btn-sm" @onclick="() => Cobrar(c.Id)">Cobrado</button>
+                                    @if (c.Numero == _certificados.Max(x => x.Numero)) { <button class="btn-link btn-danger" @onclick="() => Anular(c.Id)">Anular</button> }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Obra? _obra;
+    private AvanceObra.VistaCertificado? _vista;
+    private List<Certificado> _certificados = [];
+    private string? _motivo, _notas, _mensaje, _error;
+    private int _porValidar;
+    private MedioPago _medio = MedioPago.Transferencia;
+
+    protected override Task OnParametersSetAsync() => CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _obra = await db.Obras.AsNoTracking().SingleOrDefaultAsync(o => o.Id == Id);
+        _certificados = await db.Certificados.AsNoTracking().Where(c => c.ObraId == Id).OrderByDescending(c => c.Numero).ToListAsync();
+        _porValidar = await db.Registros.CountAsync(r => r.ObraId == Id && r.Validacion == EstadoValidacion.Pendiente);
+        (_vista, _motivo) = await Avance.CalcularCertificadoAsync(Id);
+    }
+
+    private async Task Emitir()
+    {
+        var (id, error) = await Avance.EmitirCertificadoAsync(Id, _notas);
+        _error = error;
+        _mensaje = id is null ? null : "Certificado emitido.";
+        _notas = null;
+        await CargarAsync();
+    }
+
+    private async Task Cobrar(int id)
+    {
+        _error = await Avance.MarcarCobradoAsync(id, _medio);
+        _mensaje = _error is null ? "Cobro registrado en la obra." : null;
+        await CargarAsync();
+    }
+
+    private async Task Anular(int id)
+    {
+        _error = await Avance.AnularCertificadoAsync(id);
+        _mensaje = _error is null ? "Certificado anulado." : null;
+        await CargarAsync();
+    }
+}
